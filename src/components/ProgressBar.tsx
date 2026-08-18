@@ -6,6 +6,7 @@ interface ProgressBarProps {
   currentStep: AppStep;
   selectedOffice: OfficeId | null;
   selectedCandidateId: number | null;
+  voterName?: string;
   onStepClick?: (step: AppStep) => void;
   totalVotesCount: number;
   totalDivisionEmployees: number;
@@ -14,7 +15,7 @@ interface ProgressBarProps {
 }
 
 const STEPS: { key: AppStep; label: string; stepNum: number; icon: React.ComponentType<{ className?: string }> }[] = [
-  { key: 'select-office', label: 'Office', stepNum: 1, icon: Building },
+  { key: 'select-office', label: 'Office & Voter', stepNum: 1, icon: Building },
   { key: 'select-employee', label: 'Nominee', stepNum: 2, icon: UserCheck },
   { key: 'review', label: 'Confirm', stepNum: 3, icon: ShieldCheck },
   { key: 'success', label: 'Receipt', stepNum: 4, icon: FileText },
@@ -23,10 +24,13 @@ const STEPS: { key: AppStep; label: string; stepNum: number; icon: React.Compone
 export const ProgressBar: React.FC<ProgressBarProps> = ({
   currentStep,
   selectedOffice,
+  voterName,
   onStepClick,
   totalVotesCount,
   totalDivisionEmployees,
 }) => {
+  const isVoterSelected = !!(voterName && voterName.trim().length > 0);
+
   const getStepStatus = (stepKey: AppStep) => {
     const stepOrder: AppStep[] = ['select-office', 'select-employee', 'review', 'success'];
     const currentIndex = stepOrder.indexOf(currentStep);
@@ -46,9 +50,10 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
         <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 sm:pb-0 no-scrollbar">
           {STEPS.map((step) => {
             const status = getStepStatus(step.key);
+            // Step 2 is ONLY clickable if an office is chosen AND a voter has identified themselves
             const isClickable =
               (step.key === 'select-office' && currentStep !== 'select-office') ||
-              (step.key === 'select-employee' && selectedOffice && currentStep !== 'select-employee');
+              (step.key === 'select-employee' && selectedOffice && isVoterSelected && currentStep !== 'select-employee');
 
             return (
               <button
@@ -57,7 +62,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
                 disabled={!isClickable || !onStepClick}
                 onClick={() => isClickable && onStepClick && onStepClick(step.key)}
                 className={`flex items-center gap-1.5 min-h-[38px] px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 touch-manipulation ${
-                  isClickable ? 'cursor-pointer' : 'cursor-default'
+                  isClickable ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'
                 } ${
                   status === 'current'
                     ? 'bg-indigo-600 text-white shadow-xs'

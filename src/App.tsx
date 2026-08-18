@@ -81,12 +81,23 @@ export default function App() {
   };
 
   const handleOpenConfirmation = () => {
+    if (!voterName.trim()) {
+      setSubmitError('Please choose your name from the employee roster in Step 1 before voting.');
+      setCurrentStep('select-office');
+      return;
+    }
     if (selectedCandidateId && selectedOffice) {
       setIsConfirmationOpen(true);
     }
   };
 
   const handleConfirmSubmit = () => {
+    if (!voterName.trim()) {
+      setSubmitError('Voter identification required. Please choose your name in Step 1.');
+      setIsConfirmationOpen(false);
+      setCurrentStep('select-office');
+      return;
+    }
     if (!selectedOffice || !selectedCandidateId) return;
 
     const candidate = EMPLOYEES.find((e) => e.id === selectedCandidateId);
@@ -185,8 +196,15 @@ export default function App() {
   const handleStepClick = (step: AppStep) => {
     if (step === 'select-office') {
       setCurrentStep('select-office');
-    } else if (step === 'select-employee' && selectedOffice) {
-      setCurrentStep('select-employee');
+    } else if (step === 'select-employee') {
+      if (!voterName.trim()) {
+        setSubmitError('Please choose your name from the employee roster in Step 1 before proceeding to nominees.');
+        setCurrentStep('select-office');
+        return;
+      }
+      if (selectedOffice) {
+        setCurrentStep('select-employee');
+      }
     }
   };
 
@@ -224,6 +242,7 @@ export default function App() {
               currentStep={currentStep}
               selectedOffice={selectedOffice}
               selectedCandidateId={selectedCandidateId}
+              voterName={voterName}
               onStepClick={handleStepClick}
               totalVotesCount={allVotes.length}
               totalDivisionEmployees={EMPLOYEES.length}
@@ -266,6 +285,7 @@ export default function App() {
             ) : currentStep === 'select-employee' && selectedOffice ? (
               <EmployeeVotingList
                 officeId={selectedOffice}
+                voterName={voterName}
                 onSelectOffice={handleSelectOffice}
                 selectedCandidateId={selectedCandidateId}
                 onSelectCandidate={handleSelectCandidate}

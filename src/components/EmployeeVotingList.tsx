@@ -9,10 +9,12 @@ import {
   User,
   Check,
   X,
+  AlertCircle,
 } from 'lucide-react';
 
 interface EmployeeVotingListProps {
   officeId: OfficeId;
+  voterName?: string;
   onSelectOffice: (id: OfficeId) => void;
   selectedCandidateId: number | null;
   onSelectCandidate: (id: number) => void;
@@ -25,6 +27,7 @@ interface EmployeeVotingListProps {
 
 export const EmployeeVotingList: React.FC<EmployeeVotingListProps> = ({
   officeId,
+  voterName = '',
   onSelectOffice,
   selectedCandidateId,
   onSelectCandidate,
@@ -37,6 +40,7 @@ export const EmployeeVotingList: React.FC<EmployeeVotingListProps> = ({
 
   const office = getOfficeById(officeId);
   const employees = useMemo(() => getEmployeesByOffice(officeId), [officeId]);
+  const isVoterIdentified = voterName.trim().length > 0;
 
   const filteredEmployees = useMemo(() => {
     return employees.filter((emp) => {
@@ -51,6 +55,35 @@ export const EmployeeVotingList: React.FC<EmployeeVotingListProps> = ({
 
   return (
     <div className="space-y-4 sm:space-y-5 max-w-5xl mx-auto pb-24 sm:pb-0">
+      {/* ⚠️ Warning Banner if user skipped identifying themselves in Step 1 */}
+      {!isVoterIdentified && (
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-3.5 sm:p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+        >
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+            <div>
+              <p className="text-xs font-bold text-amber-900">
+                Voter Identification Required
+              </p>
+              <p className="text-[11px] text-amber-700 mt-0.5">
+                You must choose your name from the employee roster in Step 1 before your ballot can be submitted.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onBackToOffices}
+            className="min-h-[38px] px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer touch-manipulation shrink-0"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Select Your Name in Step 1</span>
+          </button>
+        </motion.div>
+      )}
+
       {/* Top Bar with Department Switcher & Office Info */}
       <motion.div
         initial={{ opacity: 0, y: -6 }}
@@ -76,9 +109,20 @@ export const EmployeeVotingList: React.FC<EmployeeVotingListProps> = ({
                 {office?.fullName}
               </h2>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Select <strong>1 employee</strong> ({employees.length} Nominees)
-            </p>
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              <span className="text-xs text-slate-500">
+                Select <strong>1 employee</strong> ({employees.length} Nominees)
+              </span>
+              {isVoterIdentified ? (
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  Voting as: {voterName}
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                  No Voter Selected
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -242,15 +286,21 @@ export const EmployeeVotingList: React.FC<EmployeeVotingListProps> = ({
         <button
           id="proceed-to-review-btn"
           type="button"
-          disabled={!selectedCandidateId}
+          disabled={!selectedCandidateId || !isVoterIdentified}
           onClick={onProceedToReview}
           className={`w-full sm:w-auto min-h-[46px] sm:min-h-[42px] px-6 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 touch-manipulation ${
-            selectedCandidateId
+            selectedCandidateId && isVoterIdentified
               ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs cursor-pointer active:scale-95'
               : 'bg-slate-200 text-slate-400 cursor-not-allowed'
           }`}
         >
-          <span>Review & Submit Vote</span>
+          <span>
+            {!isVoterIdentified
+              ? 'Select Name in Step 1 First'
+              : !selectedCandidateId
+              ? 'Select Nominee Above'
+              : 'Review & Submit Vote'}
+          </span>
           <ArrowRight className="w-4 h-4" />
         </button>
       </motion.div>
