@@ -1,0 +1,6 @@
+{
+  "name": "DCFSSS Best Employee Voting System",
+  "description": "Official Best Employee Award Voting System for the Division for Campus Facility, Safety, and Security Services (DCFSSS)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
