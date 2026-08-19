@@ -11,7 +11,7 @@ export const ADMIN_DESIGNATION = 'Project Technical Officer (ECO) / System Admin
 export const ADMIN_DEFAULT_PASSCODE = 'teambuildingadmin1';
 
 const DEFAULT_SETTINGS: ElectionSettings = {
-  isResultsPublic: false, // Default is confidential/anonymous (Admin-only real names)
+  isResultsPublic: false, // Default is confidential/anonymous (Fruit/Animal Codenames)
   adminName: ADMIN_NAME,
 };
 
@@ -33,13 +33,24 @@ export function saveElectionSettings(settings: ElectionSettings): void {
   localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
 }
 
-export function toggleResultsPublicSetting(isPublic: boolean): ElectionSettings {
+export async function toggleResultsPublicSetting(isPublic: boolean): Promise<ElectionSettings> {
   const current = getElectionSettings();
   const updated: ElectionSettings = {
     ...current,
     isResultsPublic: isPublic,
   };
   saveElectionSettings(updated);
+
+  try {
+    await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isResultsPublic: isPublic }),
+    });
+  } catch {
+    // Local fallback
+  }
+
   return updated;
 }
 
@@ -73,6 +84,10 @@ export function getStoredVotes(): VoteRecord[] {
   }
 }
 
+export function updateStoredVotes(votes: VoteRecord[]): void {
+  localStorage.setItem(VOTES_STORAGE_KEY, JSON.stringify(votes));
+}
+
 /**
  * Checks if an employee has already cast their ballot.
  */
@@ -84,7 +99,7 @@ export function hasEmployeeVoted(voterNameOrId: string | number): boolean {
     return allVotes.some((v) => v.voterId === voterNameOrId);
   }
 
-  const cleanName = voterNameOrId.trim().toLowerCase();
+  const cleanName = String(voterNameOrId).trim().toLowerCase();
   return allVotes.some((v) => {
     if (v.voterId && String(v.voterId) === cleanName) return true;
     if (v.voterName && v.voterName.trim().toLowerCase() === cleanName) return true;
@@ -103,7 +118,7 @@ export function getVoteByVoter(voterNameOrId: string | number): VoteRecord | und
     return allVotes.find((v) => v.voterId === voterNameOrId);
   }
 
-  const cleanName = voterNameOrId.trim().toLowerCase();
+  const cleanName = String(voterNameOrId).trim().toLowerCase();
   return allVotes.find((v) => {
     if (v.voterId && String(v.voterId) === cleanName) return true;
     if (v.voterName && v.voterName.trim().toLowerCase() === cleanName) return true;
@@ -135,9 +150,11 @@ export function getVotedParticipantIds(): Set<number> {
 }
 
 /**
- * Saves a new vote record, strictly validating that the employee has not already voted.
+ * Saves a new vote record, broadcast to server for live sync, and saves to localStorage.
  */
-export function saveVoteRecord(vote: Omit<VoteRecord, 'id' | 'timestamp' | 'verificationCode'>): VoteRecord {
+export async function saveVoteRecord(
+  vote: Omit<VoteRecord, 'id' | 'timestamp' | 'verificationCode'>
+): Promise<VoteRecord> {
   const allVotes = getStoredVotes();
 
   // Strict validation: Check if voter already cast a ballot
@@ -165,20 +182,37 @@ export function saveVoteRecord(vote: Omit<VoteRecord, 'id' | 'timestamp' | 'veri
   localStorage.setItem(VOTES_STORAGE_KEY, JSON.stringify(updatedVotes));
   localStorage.setItem(MY_VOTE_KEY, JSON.stringify(newRecord));
 
+  // Sync with live server backend for multi-device live streaming
+  try {
+    const res = await fetch('/api/vote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vote }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.allVotes) {
+        updateStoredVotes(data.allVotes);
+      }
+    }
+  } catch {
+    // Offline / fallback mode
+  }
+
   return newRecord;
 }
 
 /**
  * Resets/deletes the vote of a specific employee to allow them to revote.
  */
-export function resetSingleEmployeeVote(voterIdOrName: number | string): VoteRecord[] {
+export async function resetSingleEmployeeVote(voterIdOrName: number | string): Promise<VoteRecord[]> {
   const allVotes = getStoredVotes();
   let updatedVotes: VoteRecord[] = [];
 
   if (typeof voterIdOrName === 'number') {
     updatedVotes = allVotes.filter((v) => v.voterId !== voterIdOrName);
   } else {
-    const cleanName = voterIdOrName.trim().toLowerCase();
+    const cleanName = String(voterIdOrName).trim().toLowerCase();
     updatedVotes = allVotes.filter((v) => {
       if (v.voterId && String(v.voterId) === cleanName) return false;
       if (v.voterName && v.voterName.trim().toLowerCase() === cleanName) return false;
@@ -188,15 +222,24 @@ export function resetSingleEmployeeVote(voterIdOrName: number | string): VoteRec
 
   localStorage.setItem(VOTES_STORAGE_KEY, JSON.stringify(updatedVotes));
 
-  // If the currently stored session vote was for this person, clear it too
   const myVote = getMySubmittedVote();
   if (myVote) {
     if (
       (typeof voterIdOrName === 'number' && myVote.voterId === voterIdOrName) ||
-      (typeof voterIdOrName === 'string' && myVote.voterName?.trim().toLowerCase() === voterIdOrName.trim().toLowerCase())
+      (typeof voterIdOrName === 'string' && myVote.voterName?.trim().toLowerCase() === String(voterIdOrName).trim().toLowerCase())
     ) {
       clearMySubmittedVote();
     }
+  }
+
+  try {
+    await fetch('/api/reset-vote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voterIdOrName }),
+    });
+  } catch {
+    // Offline fallback
   }
 
   return updatedVotes;
@@ -215,9 +258,15 @@ export function clearMySubmittedVote(): void {
   localStorage.removeItem(MY_VOTE_KEY);
 }
 
-export function resetAllVotesToDefault(): void {
+export async function resetAllVotesToDefault(): Promise<void> {
   localStorage.setItem(VOTES_STORAGE_KEY, JSON.stringify([]));
   localStorage.removeItem(MY_VOTE_KEY);
+
+  try {
+    await fetch('/api/reset-all', { method: 'POST' });
+  } catch {
+    // Offline fallback
+  }
 }
 
 export function getOfficeTallies(votes: VoteRecord[]): OfficeTally[] {
@@ -252,4 +301,119 @@ export function getOfficeTallies(votes: VoteRecord[]): OfficeTally[] {
       candidates,
     };
   });
+}
+
+/**
+ * Real-time SSE and Polling Subscription
+ * Allows all employees' screens to update live as votes are submitted!
+ */
+export function subscribeToLiveVotes(
+  onVotesChange: (votes: VoteRecord[], settings?: ElectionSettings, isLive?: boolean) => void
+): () => void {
+  let isUnmounted = false;
+
+  // 1. Initial fetch from server
+  fetch('/api/votes')
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data) => {
+      if (data && !isUnmounted) {
+        if (Array.isArray(data.votes) && data.votes.length > 0) {
+          updateStoredVotes(data.votes);
+          onVotesChange(data.votes, data.settings, true);
+        } else {
+          // If server is empty but local has votes, sync up
+          const local = getStoredVotes();
+          if (local.length > 0) {
+            onVotesChange(local, getElectionSettings(), true);
+          }
+        }
+      }
+    })
+    .catch(() => {
+      // Fallback to local
+      onVotesChange(getStoredVotes(), getElectionSettings(), false);
+    });
+
+  // 2. EventSource (SSE) for zero-latency live updates
+  let eventSource: EventSource | null = null;
+  try {
+    eventSource = new EventSource('/api/live-stream');
+
+    eventSource.onmessage = (event) => {
+      if (isUnmounted) return;
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.type === 'VOTE_ADDED' && payload.data?.allVotes) {
+          updateStoredVotes(payload.data.allVotes);
+          onVotesChange(payload.data.allVotes, undefined, true);
+        } else if (payload.type === 'VOTES_RESET_SINGLE' && payload.data?.allVotes) {
+          updateStoredVotes(payload.data.allVotes);
+          onVotesChange(payload.data.allVotes, undefined, true);
+        } else if (payload.type === 'VOTES_CLEARED') {
+          updateStoredVotes([]);
+          onVotesChange([], undefined, true);
+        } else if (payload.type === 'SETTINGS_UPDATED') {
+          saveElectionSettings(payload.data);
+          onVotesChange(getStoredVotes(), payload.data, true);
+        } else if (payload.type === 'INIT' && payload.data?.votes) {
+          if (payload.data.votes.length > 0) {
+            updateStoredVotes(payload.data.votes);
+            onVotesChange(payload.data.votes, payload.data.settings, true);
+          }
+        }
+      } catch (err) {
+        console.error('SSE parse error:', err);
+      }
+    };
+
+    eventSource.onerror = () => {
+      // Reconnection handled automatically by browser EventSource
+    };
+  } catch (err) {
+    console.warn('SSE not available, falling back to polling', err);
+  }
+
+  // 3. Fallback Poller (every 2.5s) to guarantee updates even across reconnects
+  const pollInterval = setInterval(() => {
+    if (isUnmounted) return;
+    fetch('/api/votes')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.votes)) {
+          const currentLocal = getStoredVotes();
+          if (data.votes.length !== currentLocal.length || JSON.stringify(data.votes) !== JSON.stringify(currentLocal)) {
+            updateStoredVotes(data.votes);
+            if (data.settings) saveElectionSettings(data.settings);
+            onVotesChange(data.votes, data.settings, true);
+          }
+        }
+      })
+      .catch(() => {});
+  }, 2500);
+
+  // 4. Storage event listener for multi-tab support on same device
+  const handleStorageChange = (e: StorageEvent) => {
+    if (e.key === VOTES_STORAGE_KEY && e.newValue) {
+      try {
+        const parsed = JSON.parse(e.newValue);
+        onVotesChange(parsed, getElectionSettings(), true);
+      } catch {}
+    } else if (e.key === SETTINGS_STORAGE_KEY && e.newValue) {
+      try {
+        const parsed = JSON.parse(e.newValue);
+        onVotesChange(getStoredVotes(), parsed, true);
+      } catch {}
+    }
+  };
+
+  window.addEventListener('storage', handleStorageChange);
+
+  return () => {
+    isUnmounted = true;
+    if (eventSource) {
+      eventSource.close();
+    }
+    clearInterval(pollInterval);
+    window.removeEventListener('storage', handleStorageChange);
+  };
 }

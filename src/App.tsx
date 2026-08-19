@@ -10,6 +10,7 @@ import {
   toggleResultsPublicSetting,
   getIsAdminAuthenticated,
   setAdminAuthenticated,
+  subscribeToLiveVotes,
   ADMIN_NAME,
 } from './utils/storage';
 import { EMPLOYEES, getEmployeesByOffice, DIVISION_INFO } from './data/officesData';
@@ -24,7 +25,7 @@ import { GuidelinesView } from './components/GuidelinesView';
 import { AdminAuthModal } from './components/AdminAuthModal';
 
 export default function App() {
-  const [currentTab, setCurrentTab] = useState<ViewTab>('vote');
+  const [currentTab, setCurrentTab] = useState<ViewTab>('guidelines');
   const [currentStep, setCurrentStep] = useState<AppStep>('select-office');
 
   const [selectedOffice, setSelectedOffice] = useState<OfficeId | null>(null);
@@ -42,7 +43,7 @@ export default function App() {
   const [allVotes, setAllVotes] = useState<VoteRecord[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Load initial states from storage
+  // Load initial states and subscribe to real-time live election sync
   useEffect(() => {
     const votes = getStoredVotes();
     setAllVotes(votes);
@@ -54,6 +55,22 @@ export default function App() {
 
     setIsAdmin(getIsAdminAuthenticated());
     setSettings(getElectionSettings());
+
+    // Live Server-Sent Events & Polling Subscription
+    const unsubscribe = subscribeToLiveVotes((liveVotes, updatedSettings) => {
+      setAllVotes(liveVotes);
+      if (updatedSettings) {
+        setSettings(updatedSettings);
+      }
+      const myVote = getMySubmittedVote();
+      if (myVote) {
+        setSubmittedReceipt(myVote);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   const handleSelectOffice = (officeId: OfficeId) => {
@@ -91,7 +108,7 @@ export default function App() {
     }
   };
 
-  const handleConfirmSubmit = () => {
+  const handleConfirmSubmit = async () => {
     if (!voterName.trim()) {
       setSubmitError('Voter identification required. Please choose your name in Step 1.');
       setIsConfirmationOpen(false);
@@ -104,7 +121,7 @@ export default function App() {
     if (!candidate) return;
 
     try {
-      const record = saveVoteRecord({
+      const record = await saveVoteRecord({
         officeId: selectedOffice,
         candidateId: selectedCandidateId,
         candidateName: candidate.name,
@@ -129,9 +146,9 @@ export default function App() {
     }
   };
 
-  const handleResetElection = () => {
+  const handleResetElection = async () => {
     if (window.confirm('Reset all votes and clear the entire voting ledger to 0?')) {
-      resetAllVotesToDefault();
+      await resetAllVotesToDefault();
       setAllVotes(getStoredVotes());
       setSubmittedReceipt(null);
       setSelectedOffice(null);
@@ -146,12 +163,11 @@ export default function App() {
   };
 
   // Reset a single employee's vote so they can revote
-  const handleResetSingleVote = (voterIdOrName: number | string, personName: string) => {
+  const handleResetSingleVote = async (voterIdOrName: number | string, personName: string) => {
     if (window.confirm(`Reset the ballot for "${personName}"? This will remove their vote and allow them to revote.`)) {
-      const updated = resetSingleEmployeeVote(voterIdOrName);
+      const updated = await resetSingleEmployeeVote(voterIdOrName);
       setAllVotes(updated);
 
-      // Check if current session was this person
       const currentVote = getMySubmittedVote();
       if (!currentVote) {
         setSubmittedReceipt(null);
@@ -176,8 +192,8 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleTogglePublicResults = (isPublic: boolean) => {
-    const updated = toggleResultsPublicSetting(isPublic);
+  const handleTogglePublicResults = async (isPublic: boolean) => {
+    const updated = await toggleResultsPublicSetting(isPublic);
     setSettings(updated);
   };
 
@@ -355,6 +371,11 @@ export default function App() {
             <span className="font-semibold text-slate-700">{DIVISION_INFO.name}</span>
             <span className="mx-2">•</span>
             <span>Division Chief: {DIVISION_INFO.chief}</span>
+          </div>
+          <div className="text-slate-500 font-medium text-[11px] flex items-center gap-2">
+            <span>Admin: <strong>{ADMIN_NAME}</strong></span>
+            <span>•</span>
+            <span>{settings.isResultsPublic ? 'Results Public' : 'Results Anonymous'}</span>
           </div>
         </div>
       </footer>

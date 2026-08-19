@@ -35,14 +35,28 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Tabs & Controls */}
+      {/* Tabs & Controls - Criteria is First */}
       <div className="flex items-center gap-1 sm:gap-2 shrink-0">
         <nav className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+          <button
+            id="tab-guidelines-btn"
+            type="button"
+            onClick={() => onTabChange('guidelines')}
+            className={`min-h-[36px] sm:min-h-[38px] px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 sm:gap-1.5 cursor-pointer touch-manipulation ${
+              currentTab === 'guidelines'
+                ? 'bg-white text-indigo-600 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <BookOpen className="w-3.5 h-3.5 shrink-0" />
+            <span>Criteria</span>
+          </button>
+
           <button
             id="tab-vote-btn"
             type="button"
             onClick={() => onTabChange('vote')}
-            className={`min-h-[36px] sm:min-h-[38px] px-2 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 sm:gap-1.5 cursor-pointer touch-manipulation ${
+            className={`min-h-[36px] sm:min-h-[38px] px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 sm:gap-1.5 cursor-pointer touch-manipulation ${
               currentTab === 'vote'
                 ? 'bg-white text-indigo-600 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -59,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
             id="tab-results-btn"
             type="button"
             onClick={() => onTabChange('results')}
-            className={`min-h-[36px] sm:min-h-[38px] px-2 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 sm:gap-1.5 cursor-pointer touch-manipulation ${
+            className={`min-h-[36px] sm:min-h-[38px] px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 sm:gap-1.5 cursor-pointer touch-manipulation ${
               currentTab === 'results'
                 ? 'bg-white text-indigo-600 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -67,20 +81,6 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <BarChart3 className="w-3.5 h-3.5 shrink-0" />
             <span>Tally</span>
-          </button>
-
-          <button
-            id="tab-guidelines-btn"
-            type="button"
-            onClick={() => onTabChange('guidelines')}
-            className={`min-h-[36px] sm:min-h-[38px] px-2 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 sm:gap-1.5 cursor-pointer touch-manipulation ${
-              currentTab === 'guidelines'
-                ? 'bg-white text-indigo-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <BookOpen className="w-3.5 h-3.5 shrink-0" />
-            <span className="hidden sm:inline">Criteria</span>
           </button>
         </nav>
 
