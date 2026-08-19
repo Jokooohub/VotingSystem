@@ -138,11 +138,17 @@ export default function App() {
       setCurrentStep('success');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: unknown) {
-      const errorMsg =
-        err instanceof Error ? err.message : 'Error submitting vote: Multiple ballots are not permitted.';
+      let errorMsg = 'Error submitting vote: Multiple ballots are not permitted.';
+      if (err instanceof Error) {
+        try {
+          const parsed = JSON.parse(err.message);
+          errorMsg = parsed.error || err.message;
+        } catch {
+          errorMsg = err.message;
+        }
+      }
       setSubmitError(errorMsg);
       setIsConfirmationOpen(false);
-      alert(errorMsg);
     }
   };
 

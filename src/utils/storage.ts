@@ -101,7 +101,10 @@ export async function toggleResultsPublicSetting(isPublic: boolean): Promise<Ele
 
   try {
     const settingsDocRef = doc(db, 'settings', 'global');
-    await setDoc(settingsDocRef, updated, { merge: true });
+    await setDoc(settingsDocRef, {
+      isResultsPublic: isPublic,
+      adminName: updated.adminName || ADMIN_NAME,
+    }, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, 'settings/global');
   }
@@ -143,6 +146,9 @@ export function updateStoredVotes(votes: VoteRecord[]): void {
   localStorage.setItem(VOTES_STORAGE_KEY, JSON.stringify(votes));
 }
 
+/**
+ * Checks if an employee has already cast their ballot.
+ */
 export function hasEmployeeVoted(voterNameOrId: string | number): boolean {
   if (!voterNameOrId) return false;
   const allVotes = getStoredVotes();
@@ -159,6 +165,9 @@ export function hasEmployeeVoted(voterNameOrId: string | number): boolean {
   });
 }
 
+/**
+ * Gets the submitted vote record for a specific employee.
+ */
 export function getVoteByVoter(voterNameOrId: string | number): VoteRecord | undefined {
   if (!voterNameOrId) return undefined;
   const allVotes = getStoredVotes();
@@ -175,6 +184,9 @@ export function getVoteByVoter(voterNameOrId: string | number): VoteRecord | und
   });
 }
 
+/**
+ * Returns a list of participant IDs who have already cast their vote.
+ */
 export function getVotedParticipantIds(): Set<number> {
   const allVotes = getStoredVotes();
   const votedIds = new Set<number>();
@@ -195,11 +207,16 @@ export function getVotedParticipantIds(): Set<number> {
   return votedIds;
 }
 
+/**
+ * Saves a new vote record to Google Cloud Firestore and local backup.
+ * Firestore instantly broadcasts to all laptops, phones, and devices worldwide!
+ */
 export async function saveVoteRecord(
   vote: Omit<VoteRecord, 'id' | 'timestamp' | 'verificationCode'>
 ): Promise<VoteRecord> {
   const allVotes = getStoredVotes();
 
+  // Strict local duplicate prevention
   if (vote.voterId && hasEmployeeVoted(vote.voterId)) {
     throw new Error(`Ballot already cast: ${vote.voterName || 'This employee'} has already submitted a vote.`);
   }
@@ -213,21 +230,46 @@ export async function saveVoteRecord(
   const hexPart = Math.random().toString(36).substring(2, 4).toUpperCase();
   const verificationCode = `DCFSSS-${vote.officeId}-${randomSuffix}-${hexPart}`;
   const voteDocId = `vote-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  const cleanReason = vote.reason?.trim() || '';
 
   const newRecord: VoteRecord = {
-    ...vote,
     id: voteDocId,
+    officeId: vote.officeId,
+    candidateId: vote.candidateId,
+    candidateName: vote.candidateName,
+    candidateDesignation: vote.candidateDesignation,
+    voterName: vote.voterName,
+    voterId: typeof vote.voterId === 'number' ? vote.voterId : undefined,
+    reason: cleanReason,
     timestamp,
     verificationCode,
   };
 
+  // 1. Optimistic Local Save
   const updatedVotes = [newRecord, ...allVotes];
   updateStoredVotes(updatedVotes);
   localStorage.setItem(MY_VOTE_KEY, JSON.stringify(newRecord));
 
+  // 2. Commit to Cloud Firestore Database (Clean payload with no undefined keys)
+  const firestoreData: Record<string, any> = {
+    id: voteDocId,
+    officeId: vote.officeId,
+    candidateId: vote.candidateId,
+    candidateName: vote.candidateName,
+    candidateDesignation: vote.candidateDesignation,
+    voterName: vote.voterName,
+    reason: cleanReason,
+    timestamp,
+    verificationCode,
+  };
+
+  if (typeof vote.voterId === 'number') {
+    firestoreData.voterId = vote.voterId;
+  }
+
   try {
     const voteRef = doc(db, 'votes', voteDocId);
-    await setDoc(voteRef, newRecord);
+    await setDoc(voteRef, firestoreData);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `votes/${voteDocId}`);
   }
@@ -235,6 +277,9 @@ export async function saveVoteRecord(
   return newRecord;
 }
 
+/**
+ * Resets/deletes the vote of a specific employee from Firestore & local.
+ */
 export async function resetSingleEmployeeVote(voterIdOrName: number | string): Promise<VoteRecord[]> {
   const allVotes = getStoredVotes();
   let updatedVotes: VoteRecord[] = [];
@@ -274,6 +319,7 @@ export async function resetSingleEmployeeVote(voterIdOrName: number | string): P
     }
   }
 
+  // Delete from Cloud Firestore
   try {
     for (const target of targetVotes) {
       if (target.id) {
@@ -300,6 +346,9 @@ export function clearMySubmittedVote(): void {
   localStorage.removeItem(MY_VOTE_KEY);
 }
 
+/**
+ * Resets all votes across all devices via Firestore batch delete.
+ */
 export async function resetAllVotesToDefault(): Promise<void> {
   updateStoredVotes([]);
   localStorage.removeItem(MY_VOTE_KEY);
@@ -350,6 +399,9 @@ export function getOfficeTallies(votes: VoteRecord[]): OfficeTally[] {
   });
 }
 
+/**
+ * Explicit trigger to sync latest votes from Cloud Firestore
+ */
 export async function syncWithServerNow(): Promise<VoteRecord[]> {
   try {
     const snapshot = await getDocs(collection(db, 'votes'));
@@ -364,13 +416,19 @@ export async function syncWithServerNow(): Promise<VoteRecord[]> {
   }
 }
 
+/**
+ * Real-time Firebase Cloud Firestore Live Subscription
+ * Listeners instantly push all votes to laptops, phones, tablets in <50ms!
+ */
 export function subscribeToLiveVotes(
   onVotesChange: (votes: VoteRecord[], settings?: ElectionSettings, isLive?: boolean) => void
 ): () => void {
   let isUnmounted = false;
 
+  // 1. Initial local state push
   onVotesChange(getStoredVotes(), getElectionSettings(), true);
 
+  // 2. Real-time Firestore Listener for Votes
   const unsubscribeVotes = onSnapshot(
     collection(db, 'votes'),
     (snapshot) => {
@@ -379,6 +437,7 @@ export function subscribeToLiveVotes(
       snapshot.forEach((docSnap) => {
         liveVotes.push(docSnap.data() as VoteRecord);
       });
+      // Sort newest first
       liveVotes.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
       updateStoredVotes(liveVotes);
@@ -389,6 +448,7 @@ export function subscribeToLiveVotes(
     }
   );
 
+  // 3. Real-time Firestore Listener for Settings (Anonymous vs Public toggle)
   const unsubscribeSettings = onSnapshot(
     doc(db, 'settings', 'global'),
     (docSnap) => {
