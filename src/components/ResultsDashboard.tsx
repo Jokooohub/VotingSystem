@@ -357,7 +357,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
             }`}
           >
             <Trophy className="w-4 h-4" />
-            <span>Global Rankings</span>
+            <span>Division Rankings</span>
           </button>
 
           <button
@@ -374,7 +374,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
             }`}
           >
             <Building2 className="w-4 h-4" />
-            <span>Local Rankings</span>
+            <span>Office Rankings</span>
           </button>
         </div>
 

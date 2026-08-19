@@ -23,7 +23,7 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Brand & Division Title */}
       <div className="flex items-center gap-2 min-w-0 pr-1 sm:pr-2">
         <div className="w-8 h-8 sm:w-9 sm:h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-xs shrink-0">
-          V
+          MC
         </div>
         <div className="flex flex-col min-w-0">
           <span className="text-xs sm:text-sm font-bold text-slate-900 leading-tight truncate">
