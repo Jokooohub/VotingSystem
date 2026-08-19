@@ -121,7 +121,7 @@ export const OfficeSelector: React.FC<OfficeSelectorProps> = ({
           Select Your Office to Find Your Name
         </h2>
         <p className="text-xs text-slate-500 mt-1">
-          First choose the office/department you belong to. The system will load only your department's personnel list so you can easily identify yourself.
+          First choose the office you belong to. The system will load only your department's personnel list so you can easily identify yourself.
         </p>
 
         {/* 1.1 Department Selection Cards */}

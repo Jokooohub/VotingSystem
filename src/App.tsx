@@ -379,7 +379,7 @@ export default function App() {
             <span>Division Chief: {DIVISION_INFO.chief}</span>
           </div>
           <div className="text-slate-500 font-medium text-[11px] flex items-center gap-2">
-            <span>Admin: <strong>{ADMIN_NAME}</strong></span>
+            <span>Created by: <strong>{ADMIN_NAME}</strong></span>
             <span>•</span>
             <span>{settings.isResultsPublic ? 'Results Public' : 'Results Anonymous'}</span>
           </div>
