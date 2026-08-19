@@ -207,7 +207,7 @@ export const OfficeSelector: React.FC<OfficeSelectorProps> = ({
               }`}
             >
               <Crown className="w-3.5 h-3.5 text-amber-500" />
-              <span>Division Chief Office</span>
+              <span>Division Chief</span>
             </button>
           </div>
         </div>

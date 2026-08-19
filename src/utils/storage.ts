@@ -11,7 +11,7 @@ export const ADMIN_DESIGNATION = 'Project Technical Officer (ECO) / System Admin
 export const ADMIN_DEFAULT_PASSCODE = 'teambuildingadmin1';
 
 const DEFAULT_SETTINGS: ElectionSettings = {
-  isResultsPublic: false, // Default is confidential/anonymous (Fruit/Animal Codenames)
+  isResultsPublic: false,
   adminName: ADMIN_NAME,
 };
 
@@ -42,11 +42,18 @@ export async function toggleResultsPublicSetting(isPublic: boolean): Promise<Ele
   saveElectionSettings(updated);
 
   try {
-    await fetch('/api/settings', {
+    const res = await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ isResultsPublic: isPublic }),
     });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.settings) {
+        saveElectionSettings(data.settings);
+        return data.settings;
+      }
+    }
   } catch {
     // Local fallback
   }
@@ -150,14 +157,14 @@ export function getVotedParticipantIds(): Set<number> {
 }
 
 /**
- * Saves a new vote record, broadcast to server for live sync, and saves to localStorage.
+ * Saves a new vote record, persists locally and to the server database.
  */
 export async function saveVoteRecord(
   vote: Omit<VoteRecord, 'id' | 'timestamp' | 'verificationCode'>
 ): Promise<VoteRecord> {
   const allVotes = getStoredVotes();
 
-  // Strict validation: Check if voter already cast a ballot
+  // Strict local validation
   if (vote.voterId && hasEmployeeVoted(vote.voterId)) {
     throw new Error(`Ballot already cast: ${vote.voterName || 'This employee'} has already submitted a vote.`);
   }
@@ -179,24 +186,32 @@ export async function saveVoteRecord(
   };
 
   const updatedVotes = [newRecord, ...allVotes];
-  localStorage.setItem(VOTES_STORAGE_KEY, JSON.stringify(updatedVotes));
+  updateStoredVotes(updatedVotes);
   localStorage.setItem(MY_VOTE_KEY, JSON.stringify(newRecord));
 
-  // Sync with live server backend for multi-device live streaming
+  // Sync to server immediately
   try {
     const res = await fetch('/api/vote', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ vote }),
     });
+
     if (res.ok) {
       const data = await res.json();
-      if (data.allVotes) {
+      if (data.allVotes && Array.isArray(data.allVotes)) {
         updateStoredVotes(data.allVotes);
       }
+    } else if (res.status === 409) {
+      const data = await res.json();
+      if (data.allVotes) updateStoredVotes(data.allVotes);
+      throw new Error(`Ballot already cast on another device for "${vote.voterName}".`);
     }
-  } catch {
-    // Offline / fallback mode
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.includes('Ballot already cast')) {
+      throw err;
+    }
+    // Fallback keeps local record
   }
 
   return newRecord;
@@ -220,7 +235,7 @@ export async function resetSingleEmployeeVote(voterIdOrName: number | string): P
     });
   }
 
-  localStorage.setItem(VOTES_STORAGE_KEY, JSON.stringify(updatedVotes));
+  updateStoredVotes(updatedVotes);
 
   const myVote = getMySubmittedVote();
   if (myVote) {
@@ -233,14 +248,19 @@ export async function resetSingleEmployeeVote(voterIdOrName: number | string): P
   }
 
   try {
-    await fetch('/api/reset-vote', {
+    const res = await fetch('/api/reset-vote', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ voterIdOrName }),
     });
-  } catch {
-    // Offline fallback
-  }
+    if (res.ok) {
+      const data = await res.json();
+      if (data.allVotes) {
+        updateStoredVotes(data.allVotes);
+        return data.allVotes;
+      }
+    }
+  } catch {}
 
   return updatedVotes;
 }
@@ -259,14 +279,12 @@ export function clearMySubmittedVote(): void {
 }
 
 export async function resetAllVotesToDefault(): Promise<void> {
-  localStorage.setItem(VOTES_STORAGE_KEY, JSON.stringify([]));
+  updateStoredVotes([]);
   localStorage.removeItem(MY_VOTE_KEY);
 
   try {
     await fetch('/api/reset-all', { method: 'POST' });
-  } catch {
-    // Offline fallback
-  }
+  } catch {}
 }
 
 export function getOfficeTallies(votes: VoteRecord[]): OfficeTally[] {
@@ -304,37 +322,78 @@ export function getOfficeTallies(votes: VoteRecord[]): OfficeTally[] {
 }
 
 /**
- * Real-time SSE and Polling Subscription
- * Allows all employees' screens to update live as votes are submitted!
+ * Explicit trigger to sync latest votes from server across devices
+ */
+export async function syncWithServerNow(): Promise<VoteRecord[]> {
+  try {
+    const local = getStoredVotes();
+    const res = await fetch('/api/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ localVotes: local }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.allVotes)) {
+        updateStoredVotes(data.allVotes);
+        if (data.settings) saveElectionSettings(data.settings);
+        return data.allVotes;
+      }
+    }
+  } catch {}
+  return getStoredVotes();
+}
+
+/**
+ * Real-time Multi-Device Sync Subscription
+ * Synchronizes phone votes with laptop and all connected voter screens!
  */
 export function subscribeToLiveVotes(
   onVotesChange: (votes: VoteRecord[], settings?: ElectionSettings, isLive?: boolean) => void
 ): () => void {
   let isUnmounted = false;
 
-  // 1. Initial fetch from server
-  fetch('/api/votes')
-    .then((res) => (res.ok ? res.json() : null))
-    .then((data) => {
-      if (data && !isUnmounted) {
-        if (Array.isArray(data.votes) && data.votes.length > 0) {
-          updateStoredVotes(data.votes);
-          onVotesChange(data.votes, data.settings, true);
-        } else {
-          // If server is empty but local has votes, sync up
-          const local = getStoredVotes();
-          if (local.length > 0) {
-            onVotesChange(local, getElectionSettings(), true);
-          }
+  const pullAndReconcile = async () => {
+    if (isUnmounted) return;
+    try {
+      const local = getStoredVotes();
+      const res = await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ localVotes: local }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.allVotes)) {
+          updateStoredVotes(data.allVotes);
+          if (data.settings) saveElectionSettings(data.settings);
+          onVotesChange(data.allVotes, data.settings, true);
         }
       }
-    })
-    .catch(() => {
-      // Fallback to local
+    } catch {
       onVotesChange(getStoredVotes(), getElectionSettings(), false);
-    });
+    }
+  };
 
-  // 2. EventSource (SSE) for zero-latency live updates
+  // 1. Initial 2-way sync
+  pullAndReconcile();
+
+  // 2. High-speed fallback poll every 1.5 seconds for instant multi-device reflection
+  const pollInterval = setInterval(() => {
+    pullAndReconcile();
+  }, 1500);
+
+  // 3. Instant sync on window focus and tab visibility change (e.g. switching between phone apps/laptop tabs)
+  const handleFocusOrVisible = () => {
+    if (document.visibilityState === 'visible') {
+      pullAndReconcile();
+    }
+  };
+
+  window.addEventListener('focus', handleFocusOrVisible);
+  document.addEventListener('visibilitychange', handleFocusOrVisible);
+
+  // 4. Server-Sent Events (SSE) for sub-millisecond push updates
   let eventSource: EventSource | null = null;
   try {
     eventSource = new EventSource('/api/live-stream');
@@ -365,33 +424,11 @@ export function subscribeToLiveVotes(
         console.error('SSE parse error:', err);
       }
     };
-
-    eventSource.onerror = () => {
-      // Reconnection handled automatically by browser EventSource
-    };
   } catch (err) {
-    console.warn('SSE not available, falling back to polling', err);
+    console.warn('SSE not available', err);
   }
 
-  // 3. Fallback Poller (every 2.5s) to guarantee updates even across reconnects
-  const pollInterval = setInterval(() => {
-    if (isUnmounted) return;
-    fetch('/api/votes')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data && Array.isArray(data.votes)) {
-          const currentLocal = getStoredVotes();
-          if (data.votes.length !== currentLocal.length || JSON.stringify(data.votes) !== JSON.stringify(currentLocal)) {
-            updateStoredVotes(data.votes);
-            if (data.settings) saveElectionSettings(data.settings);
-            onVotesChange(data.votes, data.settings, true);
-          }
-        }
-      })
-      .catch(() => {});
-  }, 2500);
-
-  // 4. Storage event listener for multi-tab support on same device
+  // 5. Cross-tab storage synchronization
   const handleStorageChange = (e: StorageEvent) => {
     if (e.key === VOTES_STORAGE_KEY && e.newValue) {
       try {
@@ -414,6 +451,8 @@ export function subscribeToLiveVotes(
       eventSource.close();
     }
     clearInterval(pollInterval);
+    window.removeEventListener('focus', handleFocusOrVisible);
+    document.removeEventListener('visibilitychange', handleFocusOrVisible);
     window.removeEventListener('storage', handleStorageChange);
   };
 }

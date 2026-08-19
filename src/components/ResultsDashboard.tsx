@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { VoteRecord, OfficeId, ElectionSettings } from '../types';
 import { OFFICES, EMPLOYEES, ALL_PARTICIPANTS, getAnonymousProfile } from '../data/officesData';
-import { ADMIN_NAME, hasEmployeeVoted } from '../utils/storage';
+import { ADMIN_NAME, hasEmployeeVoted, syncWithServerNow } from '../utils/storage';
 import {
   Download,
   Vote,
@@ -67,6 +67,13 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   const [adminViewMode, setAdminViewMode] = useState<'leaderboard' | 'voter-ledger'>('leaderboard');
   const [ledgerFilter, setLedgerFilter] = useState<'all' | 'voted' | 'pending'>('all');
   const [adminPreviewAnonymous, setAdminPreviewAnonymous] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    await syncWithServerNow();
+    setTimeout(() => setIsSyncing(false), 600);
+  };
 
   const totalVotes = votes.length;
   const totalEmployees = ALL_PARTICIPANTS.length;
@@ -323,6 +330,16 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={handleManualSync}
+              title="Force sync latest votes from all voter devices"
+              className="min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center gap-1.5 cursor-pointer touch-manipulation"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-indigo-600 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Sync Live</span>
+            </button>
+
+            <button
+              type="button"
               onClick={handleExportCSV}
               className="min-h-[38px] px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center gap-1.5 cursor-pointer touch-manipulation"
             >
@@ -357,7 +374,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
             }`}
           >
             <Trophy className="w-4 h-4" />
-            <span>Division Rankings</span>
+            <span>Global Rankings</span>
           </button>
 
           <button
@@ -374,7 +391,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
             }`}
           >
             <Building2 className="w-4 h-4" />
-            <span>Office Rankings</span>
+            <span>Local Rankings</span>
           </button>
         </div>
 
