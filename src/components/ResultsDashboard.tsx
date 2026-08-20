@@ -374,7 +374,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
             }`}
           >
             <Trophy className="w-4 h-4" />
-            <span>Division Rankings</span>
+            <span>Global Rankings</span>
           </button>
 
           <button
@@ -391,7 +391,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
             }`}
           >
             <Building2 className="w-4 h-4" />
-            <span>Office Rankings</span>
+            <span>Local Rankings</span>
           </button>
         </div>
 
@@ -447,7 +447,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                 <span>
                   {rankingScope === 'global'
                     ? 'Top Division Contenders'
-                    : `${selectedOfficeFilter} Top Contenders`}
+                    : `${selectedOfficeFilter} Department Top Contenders`}
                 </span>
               </div>
 
@@ -628,6 +628,18 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                 <h3 className="text-xs sm:text-sm font-extrabold text-slate-900 uppercase tracking-wider">
                   Full Roster Rankings ({filteredRankings.length} Nominees)
                 </h3>
+              </div>
+
+              {/* Fast Search */}
+              <div className="relative w-full sm:w-60">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search candidate..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full min-h-[36px] bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
+                />
               </div>
             </div>
 
@@ -867,8 +879,8 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                                 {voteRecord.officeId}
                               </span>
                             </div>
-                            <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                              {voteRecord.verificationCode}
+                            <div className="text-[10px] text-slate-400 mt-0.5">
+                              {new Date(voteRecord.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </div>
                           </div>
 

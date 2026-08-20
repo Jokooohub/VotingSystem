@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { OfficeId, VoteRecord } from '../types';
+import { OfficeId } from '../types';
 import { OFFICES, ALL_PARTICIPANTS } from '../data/officesData';
-import { hasEmployeeVoted, getVoteByVoter, getVotedParticipantIds } from '../utils/storage';
+import { hasEmployeeVoted, getVotedParticipantIds } from '../utils/storage';
 import {
   ShieldAlert,
   ShieldCheck,
@@ -12,7 +12,6 @@ import {
   UserCheck,
   CheckCircle2,
   AlertCircle,
-  FileText,
   Search,
   Check,
   X,
@@ -28,7 +27,6 @@ interface OfficeSelectorProps {
   voterName: string;
   onVoterNameChange: (name: string) => void;
   onContinue: () => void;
-  onViewExistingReceipt: (receipt: VoteRecord) => void;
 }
 
 const ICON_MAP = {
@@ -46,7 +44,6 @@ export const OfficeSelector: React.FC<OfficeSelectorProps> = ({
   voterName,
   onVoterNameChange,
   onContinue,
-  onViewExistingReceipt,
 }) => {
   // Track voter's selected department (defaults to selectedOffice or 'ECO')
   const [selectedVoterOffice, setSelectedVoterOffice] = useState<string | null>(selectedOffice || null);
@@ -54,7 +51,6 @@ export const OfficeSelector: React.FC<OfficeSelectorProps> = ({
 
   const votedIds = getVotedParticipantIds();
   const alreadyVoted = voterId ? hasEmployeeVoted(voterId) : voterName ? hasEmployeeVoted(voterName) : false;
-  const existingVote = (voterId ? getVoteByVoter(voterId) : voterName ? getVoteByVoter(voterName) : undefined);
 
   // Get department members based on chosen voter office
   const departmentMembers = useMemo(() => {
@@ -121,18 +117,18 @@ export const OfficeSelector: React.FC<OfficeSelectorProps> = ({
           Select Your Office to Find Your Name
         </h2>
         <p className="text-xs text-slate-500 mt-1">
-          First choose the office you belong to. The system will load only your department's personnel list so you can easily identify yourself.
+          First choose the office you belong to. The system will load only your office's personnel list so you can easily identify yourself.
         </p>
 
         {/* 1.1 Department Selection Cards */}
         <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-xs font-bold text-slate-800">
-              1. Choose Your Department:
+              1. Choose Your Office:
             </label>
             {selectedVoterOffice && (
               <span className="text-[11px] font-medium text-indigo-600">
-                Department selected: <strong>{selectedVoterOffice}</strong>
+                Office selected: <strong>{selectedVoterOffice}</strong>
               </span>
             )}
           </div>
@@ -226,7 +222,7 @@ export const OfficeSelector: React.FC<OfficeSelectorProps> = ({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <label className="text-xs font-bold text-slate-800 block">
-                    2. Select Your Name from {selectedVoterOffice} Roster:
+                    2. Select Your Name from {selectedVoterOffice} Personnel:
                   </label>
                   <p className="text-[11px] text-slate-500">
                     Showing <strong>{filteredMembers.length}</strong> personnel in{' '}
@@ -373,29 +369,17 @@ export const OfficeSelector: React.FC<OfficeSelectorProps> = ({
         )}
 
         {/* ⛔ Already Voted Warning Banner */}
-        {alreadyVoted && existingVote && (
-          <div className="mt-4 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-start gap-2.5">
-              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <h4 className="font-bold text-xs sm:text-sm text-amber-900">
-                  Ballot Already Cast for {voterName}
-                </h4>
-                <p className="text-xs text-amber-700 mt-0.5">
-                  You have already submitted your official 1-vote ballot for{' '}
-                  <strong>{existingVote.candidateName}</strong> ({existingVote.officeId}). Multiple ballots are strictly prohibited.
-                </p>
-              </div>
+        {alreadyVoted && (
+          <div className="mt-4 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+            <div>
+              <h4 className="font-bold text-xs sm:text-sm text-amber-900">
+                Ballot Already Cast for {voterName}
+              </h4>
+              <p className="text-xs text-amber-700 mt-0.5">
+                This employee has already participated and submitted an official ballot. Multiple ballots are strictly prohibited to maintain election integrity.
+              </p>
             </div>
-
-            <button
-              type="button"
-              onClick={() => onViewExistingReceipt(existingVote)}
-              className="min-h-[44px] px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shrink-0 shadow-xs cursor-pointer touch-manipulation"
-            >
-              <FileText className="w-4 h-4" />
-              <span>View Official Receipt</span>
-            </button>
           </div>
         )}
       </div>
