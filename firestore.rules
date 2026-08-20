@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isValidVote() {
+      return request.resource.data.keys().hasAll([
+        'officeId', 'voterName', 'timestamp'
+      ]) &&
+      request.resource.data.officeId is string &&
+      request.resource.data.voterName is string &&
+      request.resource.data.voterName.size() <= 200;
+    }
+
+    function isValidSettings() {
+      return request.resource.data.keys().hasAll(['isResultsPublic', 'adminName']) &&
+      request.resource.data.isResultsPublic is bool &&
+      request.resource.data.adminName is string;
+    }
+
+    // Connection test collection
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+
+    // Votes collection: Public read for real-time live election tallying
+    match /votes/{voteId} {
+      allow read: if true;
+      allow create: if isValidVote();
+      allow update, delete: if true;
+    }
+
+    // Election settings collection
+    match /settings/{settingsId} {
+      allow read: if true;
+      allow write: if isValidSettings();
+    }
+  }
+}

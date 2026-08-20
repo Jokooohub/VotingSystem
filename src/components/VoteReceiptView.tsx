@@ -1,16 +1,8 @@
 import React, { useEffect } from 'react';
 import { VoteRecord } from '../types';
 import { getOfficeById } from '../data/officesData';
-import {
-  CheckCircle2,
-  Award,
-  Download,
-  BarChart3,
-  RefreshCw,
-  Copy,
-  Check,
-  Building,
-} from 'lucide-react';
+import { CRITERIA } from '../data/criteriaData';
+import { CheckCircle2, BarChart3, RefreshCw, Award } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface VoteReceiptViewProps {
@@ -25,12 +17,11 @@ export const VoteReceiptView: React.FC<VoteReceiptViewProps> = ({
   onNewVote,
 }) => {
   const office = getOfficeById(receipt.officeId);
-  const [copied, setCopied] = React.useState(false);
 
   useEffect(() => {
     try {
       confetti({
-        particleCount: 50,
+        particleCount: 45,
         spread: 50,
         origin: { y: 0.6 },
         colors: ['#4f46e5', '#3b82f6', '#10b981'],
@@ -39,12 +30,6 @@ export const VoteReceiptView: React.FC<VoteReceiptViewProps> = ({
       // ignore
     }
   }, []);
-
-  const handleCopyCode = () => {
-    navigator.clipboard?.writeText(receipt.verificationCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   const formattedDate = new Date(receipt.timestamp).toLocaleString('en-US', {
     month: 'short',
@@ -69,7 +54,7 @@ export const VoteReceiptView: React.FC<VoteReceiptViewProps> = ({
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-bold text-white leading-tight">
-                Ballot Submitted Successfully
+                Official Ballot Submitted
               </h3>
               <p className="text-[11px] sm:text-xs text-indigo-100 mt-0.5">
                 DCFSSS Best Employee Award
@@ -78,55 +63,74 @@ export const VoteReceiptView: React.FC<VoteReceiptViewProps> = ({
           </div>
 
           <span className="text-[10px] sm:text-xs font-bold bg-white/20 px-2.5 py-1 rounded-lg shrink-0">
-            Verified
+            Recorded
           </span>
         </div>
 
         {/* Content */}
         <div className="p-4 sm:p-5 space-y-3.5 sm:space-y-4">
-          {/* Reference Code */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                Verification Code
-              </span>
-              <span className="font-mono font-bold text-indigo-900 text-xs sm:text-sm select-all truncate block">
-                {receipt.verificationCode}
-              </span>
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex items-center justify-between">
+            <div>
+              <span className="text-slate-400 font-medium text-[11px] block">Office Department</span>
+              <p className="font-bold text-slate-800 mt-0.5 text-xs sm:text-sm">
+                {office?.shortName} - {office?.name}
+              </p>
             </div>
-
-            <button
-              type="button"
-              onClick={handleCopyCode}
-              className="min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-bold bg-white border border-slate-200 text-slate-700 flex items-center gap-1 hover:bg-slate-50 active:bg-slate-100 cursor-pointer shrink-0 touch-manipulation shadow-2xs"
-            >
-              {copied ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-indigo-600" />
-                  <span className="text-indigo-600">Copied</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Copy</span>
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Details */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 text-xs">
-            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-              <span className="text-slate-400 font-medium text-[11px] block">Office Nominated</span>
-              <p className="font-bold text-slate-800 mt-0.5 text-xs sm:text-sm">{office?.shortName} - {office?.name}</p>
-            </div>
-
-            <div className="bg-indigo-50/70 p-3 rounded-xl border border-indigo-100">
-              <span className="text-indigo-600 font-medium text-[11px] block">Selected Nominee</span>
-              <p className="font-bold text-indigo-950 mt-0.5 text-xs sm:text-sm">{receipt.candidateName}</p>
-              <p className="text-[11px] text-slate-600 truncate mt-0.5">{receipt.candidateDesignation}</p>
+            <div className="text-right">
+              <span className="text-slate-400 font-medium text-[11px] block">Voter</span>
+              <p className="font-bold text-slate-800 mt-0.5 text-xs sm:text-sm">
+                {receipt.voterName}
+              </p>
             </div>
           </div>
+
+          {/* Criteria selections summary */}
+          {receipt.criteriaSelections && receipt.criteriaSelections.length > 0 && (
+            <div className="space-y-2">
+              <span className="text-xs font-bold text-slate-700 block">
+                Your Top 3 Selections Across Criteria:
+              </span>
+              <div className="space-y-2">
+                {receipt.criteriaSelections.map((sel) => {
+                  const criterion = CRITERIA.find((c) => c.id === sel.criterionId);
+                  return (
+                    <div
+                      key={sel.criterionId}
+                      className="p-2.5 rounded-xl bg-slate-50 border border-slate-150 text-xs space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between font-bold text-slate-900">
+                        <span className="flex items-center gap-1.5">
+                          <Award className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>{criterion?.name || sel.criterionId}</span>
+                        </span>
+                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                          {criterion?.weightLabel || ''}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-[11px]">
+                        <div className="bg-white px-2 py-1 rounded border border-amber-200 truncate">
+                          <span className="font-bold text-amber-600 mr-1">🥇 1st:</span>
+                          <span className="font-medium">{sel.rank1EmployeeName}</span>
+                        </div>
+                        {sel.rank2EmployeeName && (
+                          <div className="bg-white px-2 py-1 rounded border border-slate-200 truncate">
+                            <span className="font-bold text-slate-600 mr-1">🥈 2nd:</span>
+                            <span className="font-medium">{sel.rank2EmployeeName}</span>
+                          </div>
+                        )}
+                        {sel.rank3EmployeeName && (
+                          <div className="bg-white px-2 py-1 rounded border border-amber-200/60 truncate">
+                            <span className="font-bold text-amber-800 mr-1">🥉 3rd:</span>
+                            <span className="font-medium">{sel.rank3EmployeeName}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {receipt.reason && (
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs">
@@ -135,43 +139,32 @@ export const VoteReceiptView: React.FC<VoteReceiptViewProps> = ({
             </div>
           )}
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] text-slate-400 pt-2 border-t border-slate-100">
+          <div className="text-[11px] text-slate-400 pt-2 border-t border-slate-100 flex items-center justify-between">
             <span>Date: {formattedDate}</span>
-            {receipt.voterName && <span>Voter: <strong className="text-slate-700">{receipt.voterName}</strong></span>}
+            <span className="text-emerald-700 font-bold">✓ Official Ballot Logged</span>
           </div>
         </div>
       </div>
 
-      {/* Buttons (Mobile-Optimized Touch Layout) */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5">
+      {/* Buttons */}
+      <div className="flex items-center justify-end gap-2.5">
         <button
           type="button"
-          onClick={() => window.print()}
-          className="w-full sm:w-auto min-h-[44px] px-4 py-2.5 rounded-xl text-xs font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 active:bg-slate-100 flex items-center justify-center gap-1.5 cursor-pointer touch-manipulation shadow-2xs"
+          onClick={onNewVote}
+          className="flex-1 sm:flex-none min-h-[44px] px-4 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 active:bg-slate-300 flex items-center justify-center gap-1.5 cursor-pointer touch-manipulation"
         >
-          <Download className="w-4 h-4" />
-          <span>Print / Save Receipt</span>
+          <RefreshCw className="w-3.5 h-3.5" />
+          <span>New Voter</span>
         </button>
 
-        <div className="w-full sm:w-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onNewVote}
-            className="flex-1 sm:flex-none min-h-[44px] px-4 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 active:bg-slate-300 flex items-center justify-center gap-1.5 cursor-pointer touch-manipulation"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>New Voter</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={onViewResults}
-            className="flex-1 sm:flex-none min-h-[44px] px-5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white flex items-center justify-center gap-1.5 shadow-xs cursor-pointer touch-manipulation"
-          >
-            <BarChart3 className="w-4 h-4" />
-            <span>View Tallies</span>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onViewResults}
+          className="flex-1 sm:flex-none min-h-[44px] px-5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white flex items-center justify-center gap-1.5 shadow-xs cursor-pointer touch-manipulation"
+        >
+          <BarChart3 className="w-4 h-4" />
+          <span>View Tallies</span>
+        </button>
       </div>
     </div>
   );

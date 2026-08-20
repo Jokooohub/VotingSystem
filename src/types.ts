@@ -32,30 +32,50 @@ export interface Office {
   };
 }
 
+export interface CriterionSelection {
+  criterionId: string;
+  rank1EmployeeId: number;
+  rank1EmployeeName: string;
+  rank2EmployeeId?: number;
+  rank2EmployeeName?: string;
+  rank3EmployeeId?: number;
+  rank3EmployeeName?: string;
+}
+
 export interface VoteRecord {
   id: string;
   voterId?: number | string;
   voterName: string;
   officeId: OfficeId;
-  candidateId: number;
-  candidateName: string;
-  candidateDesignation: string;
+  criteriaSelections: CriterionSelection[];
+  // Summary/legacy optional fields
+  candidateId?: number;
+  candidateName?: string;
+  candidateDesignation?: string;
   reason?: string;
   timestamp: string;
-  verificationCode: string;
+  verificationCode?: string;
+}
+
+export interface CandidateTally {
+  employeeId: number;
+  name: string;
+  designation: string;
+  totalPoints: number;
+  weightedScore: number;
+  firstPlaceCount: number;
+  secondPlaceCount: number;
+  thirdPlaceCount: number;
+  criteriaPoints: Record<string, number>;
+  voteCount: number;
+  percentage: number;
 }
 
 export interface OfficeTally {
   officeId: OfficeId;
   totalVotes: number;
   totalEmployees: number;
-  candidates: {
-    employeeId: number;
-    name: string;
-    designation: string;
-    voteCount: number;
-    percentage: number;
-  }[];
+  candidates: CandidateTally[];
 }
 
 export interface ElectionSettings {
@@ -63,5 +83,5 @@ export interface ElectionSettings {
   adminName: string;
 }
 
-export type AppStep = 'select-office' | 'select-employee' | 'review' | 'success';
+export type AppStep = 'guidelines' | 'select-office' | 'criteria-voting' | 'success';
 export type ViewTab = 'vote' | 'results' | 'guidelines' | 'admin';

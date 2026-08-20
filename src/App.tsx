@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { OfficeId, AppStep, ViewTab, VoteRecord, ElectionSettings } from './types';
+import { OfficeId, AppStep, ViewTab, VoteRecord, ElectionSettings, CriterionSelection } from './types';
 import {
   getStoredVotes,
   saveVoteRecord,
-  getMySubmittedVote,
+  clearMySubmittedVote,
   resetAllVotesToDefault,
   resetSingleEmployeeVote,
   getElectionSettings,
@@ -13,28 +13,25 @@ import {
   subscribeToLiveVotes,
   ADMIN_NAME,
 } from './utils/storage';
-import { EMPLOYEES, getEmployeesByOffice, DIVISION_INFO } from './data/officesData';
+import { ALL_PARTICIPANTS, DIVISION_INFO } from './data/officesData';
 import { Header } from './components/Header';
 import { ProgressBar } from './components/ProgressBar';
 import { OfficeSelector } from './components/OfficeSelector';
-import { EmployeeVotingList } from './components/EmployeeVotingList';
-import { ConfirmationModal } from './components/ConfirmationModal';
+import { CriteriaVotingView } from './components/CriteriaVotingView';
 import { VoteReceiptView } from './components/VoteReceiptView';
 import { ResultsDashboard } from './components/ResultsDashboard';
 import { GuidelinesView } from './components/GuidelinesView';
 import { AdminAuthModal } from './components/AdminAuthModal';
 
 export default function App() {
+  // First thing they see is the criteria
   const [currentTab, setCurrentTab] = useState<ViewTab>('guidelines');
   const [currentStep, setCurrentStep] = useState<AppStep>('select-office');
 
-  const [selectedOffice, setSelectedOffice] = useState<OfficeId | null>(null);
-  const [selectedCandidateId, setSelectedCandidateId] = useState<number | null>(null);
+  const [selectedOffice, setSelectedOffice] = useState<OfficeId | null>('ECO');
   const [voterId, setVoterId] = useState<number | null>(null);
   const [voterName, setVoterName] = useState<string>('');
-  const [reason, setReason] = useState<string>('');
 
-  const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
   const [isAdminAuthModalOpen, setIsAdminAuthModalOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [settings, setSettings] = useState<ElectionSettings>(getElectionSettings());
@@ -48,23 +45,13 @@ export default function App() {
     const votes = getStoredVotes();
     setAllVotes(votes);
 
-    const existingVote = getMySubmittedVote();
-    if (existingVote) {
-      setSubmittedReceipt(existingVote);
-    }
-
     setIsAdmin(getIsAdminAuthenticated());
     setSettings(getElectionSettings());
 
-    // Live Server-Sent Events & Polling Subscription
     const unsubscribe = subscribeToLiveVotes((liveVotes, updatedSettings) => {
       setAllVotes(liveVotes);
       if (updatedSettings) {
         setSettings(updatedSettings);
-      }
-      const myVote = getMySubmittedVote();
-      if (myVote) {
-        setSubmittedReceipt(myVote);
       }
     });
 
@@ -75,65 +62,47 @@ export default function App() {
 
   const handleSelectOffice = (officeId: OfficeId) => {
     setSelectedOffice(officeId);
-    setSelectedCandidateId(null);
     setSubmitError(null);
   };
 
-  const handleContinueToCandidates = () => {
-    if (selectedOffice && voterName) {
-      setCurrentStep('select-employee');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+  const handleContinueToCriteriaVoting = () => {
+    if (!selectedOffice) {
+      setSubmitError('Please select your department first.');
+      return;
     }
-  };
-
-  const handleSelectCandidate = (id: number) => {
-    setSelectedCandidateId(id);
+    if (!voterName.trim()) {
+      setSubmitError('Please select your name from your department roster.');
+      return;
+    }
     setSubmitError(null);
+    setCurrentStep('criteria-voting');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleBackToOffices = () => {
+  const handleBackToOfficeSelection = () => {
     setCurrentStep('select-office');
-    setSelectedCandidateId(null);
     setSubmitError(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleOpenConfirmation = () => {
-    if (!voterName.trim()) {
-      setSubmitError('Please choose your name from the employee roster in Step 1 before voting.');
+  const handleSubmitBallot = async (selections: CriterionSelection[], reason?: string) => {
+    if (!selectedOffice || !voterName.trim()) {
+      setSubmitError('Voter identification required.');
       setCurrentStep('select-office');
       return;
     }
-    if (selectedCandidateId && selectedOffice) {
-      setIsConfirmationOpen(true);
-    }
-  };
-
-  const handleConfirmSubmit = async () => {
-    if (!voterName.trim()) {
-      setSubmitError('Voter identification required. Please choose your name in Step 1.');
-      setIsConfirmationOpen(false);
-      setCurrentStep('select-office');
-      return;
-    }
-    if (!selectedOffice || !selectedCandidateId) return;
-
-    const candidate = EMPLOYEES.find((e) => e.id === selectedCandidateId);
-    if (!candidate) return;
 
     try {
       const record = await saveVoteRecord({
         officeId: selectedOffice,
-        candidateId: selectedCandidateId,
-        candidateName: candidate.name,
-        candidateDesignation: candidate.designation,
         voterId: voterId || undefined,
         voterName: voterName.trim(),
-        reason: reason.trim() || undefined,
+        criteriaSelections: selections,
+        reason: reason?.trim() || undefined,
       });
 
       setSubmittedReceipt(record);
       setAllVotes(getStoredVotes());
-      setIsConfirmationOpen(false);
       setSubmitError(null);
       setCurrentStep('success');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -148,7 +117,6 @@ export default function App() {
         }
       }
       setSubmitError(errorMsg);
-      setIsConfirmationOpen(false);
     }
   };
 
@@ -157,14 +125,12 @@ export default function App() {
       await resetAllVotesToDefault();
       setAllVotes(getStoredVotes());
       setSubmittedReceipt(null);
-      setSelectedOffice(null);
-      setSelectedCandidateId(null);
+      setSelectedOffice('ECO');
       setVoterId(null);
       setVoterName('');
-      setReason('');
       setSubmitError(null);
       setCurrentStep('select-office');
-      setCurrentTab('vote');
+      setCurrentTab('guidelines');
     }
   };
 
@@ -173,28 +139,19 @@ export default function App() {
     if (window.confirm(`Reset the ballot for "${personName}"? This will remove their vote and allow them to revote.`)) {
       const updated = await resetSingleEmployeeVote(voterIdOrName);
       setAllVotes(updated);
-
-      const currentVote = getMySubmittedVote();
-      if (!currentVote) {
-        setSubmittedReceipt(null);
-      }
+      setSubmittedReceipt(null);
+      clearMySubmittedVote();
     }
   };
 
   const handleNewVote = () => {
-    setSelectedCandidateId(null);
+    setSubmittedReceipt(null);
+    clearMySubmittedVote();
     setVoterId(null);
     setVoterName('');
-    setReason('');
     setSubmitError(null);
     setCurrentStep('select-office');
-    setCurrentTab('vote');
-  };
-
-  const handleViewExistingReceipt = (receipt: VoteRecord) => {
-    setSubmittedReceipt(receipt);
-    setCurrentStep('success');
-    setCurrentTab('vote');
+    setCurrentTab('guidelines');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -216,24 +173,18 @@ export default function App() {
   };
 
   const handleStepClick = (step: AppStep) => {
-    if (step === 'select-office') {
+    if (step === 'guidelines') {
+      setCurrentTab('guidelines');
+    } else if (step === 'select-office') {
+      setCurrentTab('vote');
       setCurrentStep('select-office');
-    } else if (step === 'select-employee') {
-      if (!voterName.trim()) {
-        setSubmitError('Please choose your name from the employee roster in Step 1 before proceeding to nominees.');
-        setCurrentStep('select-office');
-        return;
-      }
-      if (selectedOffice) {
-        setCurrentStep('select-employee');
+    } else if (step === 'criteria-voting') {
+      if (selectedOffice && voterName.trim()) {
+        setCurrentTab('vote');
+        setCurrentStep('criteria-voting');
       }
     }
   };
-
-  const officeEmployeesCount = selectedOffice ? getEmployeesByOffice(selectedOffice).length : 0;
-  const officeVotesCount = selectedOffice
-    ? allVotes.filter((v) => v.officeId === selectedOffice).length
-    : 0;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
@@ -241,40 +192,41 @@ export default function App() {
       <Header
         currentTab={currentTab}
         onTabChange={(tab) => {
+          if (currentTab === 'vote' && currentStep === 'success') {
+            setSubmittedReceipt(null);
+            clearMySubmittedVote();
+          }
           setCurrentTab(tab);
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
-        hasVoted={!!submittedReceipt}
+        hasVoted={allVotes.length > 0}
         isAdmin={isAdmin}
         onAdminClick={() => {
           if (!isAdmin) {
             setIsAdminAuthModalOpen(true);
           } else {
-            setCurrentTab('results');
+            handleAdminLogout();
           }
         }}
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
+      <main className="flex-1 max-w-5xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6">
         {currentTab === 'vote' && (
-          <div className="space-y-5">
-            {/* Progress Stepper & Turnout */}
+          <div className="space-y-4 sm:space-y-6">
+            {/* Progress Stepper */}
             <ProgressBar
               currentStep={currentStep}
               selectedOffice={selectedOffice}
-              selectedCandidateId={selectedCandidateId}
               voterName={voterName}
               onStepClick={handleStepClick}
               totalVotesCount={allVotes.length}
-              totalDivisionEmployees={EMPLOYEES.length}
-              officeVotesCount={officeVotesCount}
-              officeEmployeesCount={officeEmployeesCount}
+              totalDivisionEmployees={ALL_PARTICIPANTS.length}
             />
 
             {/* Error Banner if any */}
             {submitError && (
-              <div className="max-w-5xl mx-auto p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center justify-between">
+              <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center justify-between shadow-2xs">
                 <span>{submitError}</span>
                 <button
                   type="button"
@@ -286,14 +238,19 @@ export default function App() {
               </div>
             )}
 
-            {/* 1. Official Receipt Screen */}
+            {/* 1. Success Receipt Screen */}
             {currentStep === 'success' && submittedReceipt ? (
               <VoteReceiptView
                 receipt={submittedReceipt}
-                onViewResults={() => setCurrentTab('results')}
+                onViewResults={() => {
+                  setSubmittedReceipt(null);
+                  clearMySubmittedVote();
+                  setCurrentTab('results');
+                }}
                 onNewVote={handleNewVote}
               />
             ) : currentStep === 'select-office' ? (
+              /* Step 1: Pick What Office Are They + Name */
               <OfficeSelector
                 selectedOffice={selectedOffice}
                 onSelectOffice={handleSelectOffice}
@@ -301,26 +258,33 @@ export default function App() {
                 onVoterIdChange={setVoterId}
                 voterName={voterName}
                 onVoterNameChange={setVoterName}
-                onContinue={handleContinueToCandidates}
-                onViewExistingReceipt={handleViewExistingReceipt}
+                onContinue={handleContinueToCriteriaVoting}
               />
-            ) : currentStep === 'select-employee' && selectedOffice ? (
-              <EmployeeVotingList
+            ) : currentStep === 'criteria-voting' && selectedOffice ? (
+              /* Step 2: Criteria-based Top 3 Voting */
+              <CriteriaVotingView
                 officeId={selectedOffice}
                 voterName={voterName}
-                onSelectOffice={handleSelectOffice}
-                selectedCandidateId={selectedCandidateId}
-                onSelectCandidate={handleSelectCandidate}
-                reason={reason}
-                onReasonChange={setReason}
-                onBackToOffices={handleBackToOffices}
-                onProceedToReview={handleOpenConfirmation}
-                totalVotesCount={allVotes.length}
+                voterId={voterId}
+                onBackToOffice={handleBackToOfficeSelection}
+                onSubmitBallot={handleSubmitBallot}
               />
             ) : null}
           </div>
         )}
 
+        {/* First Thing They See: Criteria */}
+        {currentTab === 'guidelines' && (
+          <GuidelinesView
+            onStartVoting={() => {
+              setCurrentTab('vote');
+              setCurrentStep('select-office');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          />
+        )}
+
+        {/* Live Tally / Results Dashboard */}
         {currentTab === 'results' && (
           <ResultsDashboard
             votes={allVotes}
@@ -339,29 +303,7 @@ export default function App() {
             onResetSingleVote={handleResetSingleVote}
           />
         )}
-
-        {currentTab === 'guidelines' && (
-          <GuidelinesView
-            onStartVoting={() => {
-              setCurrentTab('vote');
-              setCurrentStep('select-office');
-            }}
-          />
-        )}
       </main>
-
-      {/* Final Submission Confirmation Modal */}
-      {selectedOffice && selectedCandidateId && (
-        <ConfirmationModal
-          isOpen={isConfirmationOpen}
-          officeId={selectedOffice}
-          candidateId={selectedCandidateId}
-          voterName={voterName}
-          reason={reason}
-          onClose={() => setIsConfirmationOpen(false)}
-          onConfirmSubmit={handleConfirmSubmit}
-        />
-      )}
 
       {/* Administrator Authentication Modal */}
       <AdminAuthModal
@@ -372,16 +314,16 @@ export default function App() {
 
       {/* Footer */}
       <footer className="bg-white text-slate-400 text-xs py-4 border-t border-slate-200 mt-8 print:hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
           <div>
             <span className="font-semibold text-slate-700">{DIVISION_INFO.name}</span>
             <span className="mx-2">•</span>
             <span>Division Chief: {DIVISION_INFO.chief}</span>
           </div>
           <div className="text-slate-500 font-medium text-[11px] flex items-center gap-2">
-            <span>Created by: <strong>{ADMIN_NAME}</strong></span>
+            <span>Admin: <strong>{ADMIN_NAME}</strong></span>
             <span>•</span>
-            <span>{settings.isResultsPublic ? 'Results Public' : 'Results Anonymous'}</span>
+            <span>{settings.isResultsPublic ? 'Results Public' : 'Results Sealed'}</span>
           </div>
         </div>
       </footer>

@@ -117,18 +117,18 @@ export const OfficeSelector: React.FC<OfficeSelectorProps> = ({
           Select Your Office to Find Your Name
         </h2>
         <p className="text-xs text-slate-500 mt-1">
-          First choose the office you belong to. The system will load only your office's personnel list so you can easily identify yourself.
+          First choose the office/department you belong to. The system will load only your department's personnel list so you can easily identify yourself.
         </p>
 
         {/* 1.1 Department Selection Cards */}
         <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-xs font-bold text-slate-800">
-              1. Choose Your Office:
+              1. Choose Your Department:
             </label>
             {selectedVoterOffice && (
               <span className="text-[11px] font-medium text-indigo-600">
-                Office selected: <strong>{selectedVoterOffice}</strong>
+                Department selected: <strong>{selectedVoterOffice}</strong>
               </span>
             )}
           </div>
@@ -203,7 +203,7 @@ export const OfficeSelector: React.FC<OfficeSelectorProps> = ({
               }`}
             >
               <Crown className="w-3.5 h-3.5 text-amber-500" />
-              <span>Division Chief</span>
+              <span>Division Chief Office</span>
             </button>
           </div>
         </div>
@@ -222,7 +222,7 @@ export const OfficeSelector: React.FC<OfficeSelectorProps> = ({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <label className="text-xs font-bold text-slate-800 block">
-                    2. Select Your Name from {selectedVoterOffice} Personnel:
+                    2. Select Your Name from {selectedVoterOffice} Roster:
                   </label>
                   <p className="text-[11px] text-slate-500">
                     Showing <strong>{filteredMembers.length}</strong> personnel in{' '}
@@ -413,7 +413,7 @@ export const OfficeSelector: React.FC<OfficeSelectorProps> = ({
               : 'bg-slate-200 text-slate-400 cursor-not-allowed'
           }`}
         >
-          <span>Proceed to Nominees</span>
+          <span>Proceed to Criteria Voting</span>
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>

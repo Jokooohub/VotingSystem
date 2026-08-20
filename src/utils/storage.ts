@@ -8,13 +8,21 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
-import { VoteRecord, OfficeId, OfficeTally, ElectionSettings } from '../types';
+import {
+  VoteRecord,
+  OfficeId,
+  OfficeTally,
+  CandidateTally,
+  ElectionSettings,
+  CriterionSelection,
+} from '../types';
 import { EMPLOYEES, OFFICES, ALL_PARTICIPANTS } from '../data/officesData';
+import { CRITERIA } from '../data/criteriaData';
 
-const VOTES_STORAGE_KEY = 'dcfsss_voting_records_v3';
-const MY_VOTE_KEY = 'dcfsss_my_submitted_vote_v3';
-const SETTINGS_STORAGE_KEY = 'dcfsss_election_settings_v3';
-const ADMIN_AUTH_KEY = 'dcfsss_admin_authenticated_v3';
+const VOTES_STORAGE_KEY = 'dcfsss_voting_records_v4';
+const MY_VOTE_KEY = 'dcfsss_my_submitted_vote_v4';
+const SETTINGS_STORAGE_KEY = 'dcfsss_election_settings_v4';
+const ADMIN_AUTH_KEY = 'dcfsss_admin_authenticated_v4';
 
 export const ADMIN_NAME = 'Joko J. Saco';
 export const ADMIN_DESIGNATION = 'Project Technical Officer (ECO) / System Administrator';
@@ -64,8 +72,11 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path,
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  console.warn('Firestore Operation notice: ', JSON.stringify(errInfo));
+  const msg = errInfo.error.toLowerCase();
+  if (msg.includes('permission') || msg.includes('unauthorized') || msg.includes('forbidden')) {
+    throw new Error(JSON.stringify(errInfo));
+  }
 }
 
 const DEFAULT_SETTINGS: ElectionSettings = {
@@ -208,15 +219,19 @@ export function getVotedParticipantIds(): Set<number> {
 }
 
 /**
- * Saves a new vote record to Google Cloud Firestore and local backup.
- * Firestore instantly broadcasts to all laptops, phones, and devices worldwide!
+ * Saves a new multi-criteria vote record to Google Cloud Firestore and local backup.
  */
 export async function saveVoteRecord(
-  vote: Omit<VoteRecord, 'id' | 'timestamp' | 'verificationCode'>
+  vote: {
+    officeId: OfficeId;
+    voterId?: number;
+    voterName: string;
+    criteriaSelections: CriterionSelection[];
+    reason?: string;
+  }
 ): Promise<VoteRecord> {
   const allVotes = getStoredVotes();
 
-  // Strict local duplicate prevention
   if (vote.voterId && hasEmployeeVoted(vote.voterId)) {
     throw new Error(`Ballot already cast: ${vote.voterName || 'This employee'} has already submitted a vote.`);
   }
@@ -226,41 +241,65 @@ export async function saveVoteRecord(
   }
 
   const timestamp = new Date().toISOString();
-  const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-  const hexPart = Math.random().toString(36).substring(2, 4).toUpperCase();
-  const verificationCode = `DCFSSS-${vote.officeId}-${randomSuffix}-${hexPart}`;
   const voteDocId = `vote-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   const cleanReason = vote.reason?.trim() || '';
+
+  // Clean criteria selections
+  const cleanedSelections: CriterionSelection[] = vote.criteriaSelections.map((sel) => {
+    const item: CriterionSelection = {
+      criterionId: sel.criterionId,
+      rank1EmployeeId: sel.rank1EmployeeId,
+      rank1EmployeeName: sel.rank1EmployeeName,
+    };
+    if (sel.rank2EmployeeId && sel.rank2EmployeeName) {
+      item.rank2EmployeeId = sel.rank2EmployeeId;
+      item.rank2EmployeeName = sel.rank2EmployeeName;
+    }
+    if (sel.rank3EmployeeId && sel.rank3EmployeeName) {
+      item.rank3EmployeeId = sel.rank3EmployeeId;
+      item.rank3EmployeeName = sel.rank3EmployeeName;
+    }
+    return item;
+  });
 
   const newRecord: VoteRecord = {
     id: voteDocId,
     officeId: vote.officeId,
-    candidateId: vote.candidateId,
-    candidateName: vote.candidateName,
-    candidateDesignation: vote.candidateDesignation,
     voterName: vote.voterName,
     voterId: typeof vote.voterId === 'number' ? vote.voterId : undefined,
+    criteriaSelections: cleanedSelections,
     reason: cleanReason,
     timestamp,
-    verificationCode,
   };
 
-  // 1. Optimistic Local Save
+  // 1. Local optimistic cache
   const updatedVotes = [newRecord, ...allVotes];
   updateStoredVotes(updatedVotes);
   localStorage.setItem(MY_VOTE_KEY, JSON.stringify(newRecord));
 
-  // 2. Commit to Cloud Firestore Database (Clean payload with no undefined keys)
+  // 2. Clean Firestore payload (no undefined fields)
   const firestoreData: Record<string, any> = {
     id: voteDocId,
     officeId: vote.officeId,
-    candidateId: vote.candidateId,
-    candidateName: vote.candidateName,
-    candidateDesignation: vote.candidateDesignation,
     voterName: vote.voterName,
+    criteriaSelections: cleanedSelections.map((s) => {
+      const entry: Record<string, any> = {
+        criterionId: s.criterionId,
+        rank1EmployeeId: s.rank1EmployeeId,
+        rank1EmployeeName: s.rank1EmployeeName,
+      };
+      if (typeof s.rank2EmployeeId === 'number' && s.rank2EmployeeName) {
+        entry.rank2EmployeeId = s.rank2EmployeeId;
+        entry.rank2EmployeeName = s.rank2EmployeeName;
+      }
+      if (typeof s.rank3EmployeeId === 'number' && s.rank3EmployeeName) {
+        entry.rank3EmployeeId = s.rank3EmployeeId;
+        entry.rank3EmployeeName = s.rank3EmployeeName;
+      }
+      return entry;
+    }),
     reason: cleanReason,
     timestamp,
-    verificationCode,
   };
 
   if (typeof vote.voterId === 'number') {
@@ -365,30 +404,129 @@ export async function resetAllVotesToDefault(): Promise<void> {
   }
 }
 
+/**
+ * Computes official Office Tallies with criteria-weighted scoring.
+ * 🥇 1st Place = 3 points
+ * 🥈 2nd Place = 2 points
+ * 🥉 3rd Place = 1 point
+ * Weighted Score = Sum(Points in Criterion * (Criterion Weight / 100))
+ */
 export function getOfficeTallies(votes: VoteRecord[]): OfficeTally[] {
+  const criteriaMap = new Map(CRITERIA.map((c) => [c.id, c.weight]));
+
   return OFFICES.map((office) => {
     const officeEmployees = EMPLOYEES.filter((e) => e.officeId === office.id);
     const officeVotes = votes.filter((v) => v.officeId === office.id);
     const totalVotes = officeVotes.length;
 
-    const candidateCounts: Record<number, number> = {};
-    officeVotes.forEach((v) => {
-      candidateCounts[v.candidateId] = (candidateCounts[v.candidateId] || 0) + 1;
+    // Initialize stats map for each employee in the office
+    const employeeStats = new Map<
+      number,
+      {
+        totalPoints: number;
+        weightedScore: number;
+        firstPlaceCount: number;
+        secondPlaceCount: number;
+        thirdPlaceCount: number;
+        criteriaPoints: Record<string, number>;
+        voteCount: number;
+      }
+    >();
+
+    officeEmployees.forEach((emp) => {
+      employeeStats.set(emp.id, {
+        totalPoints: 0,
+        weightedScore: 0,
+        firstPlaceCount: 0,
+        secondPlaceCount: 0,
+        thirdPlaceCount: 0,
+        criteriaPoints: {},
+        voteCount: 0,
+      });
     });
 
-    const candidates = officeEmployees
+    // Accumulate points from all submitted ballots
+    officeVotes.forEach((vote) => {
+      if (vote.criteriaSelections && vote.criteriaSelections.length > 0) {
+        vote.criteriaSelections.forEach((sel) => {
+          const weight = criteriaMap.get(sel.criterionId) || 20;
+          const weightMultiplier = weight / 100;
+
+          // Rank 1 (3 points)
+          if (sel.rank1EmployeeId && employeeStats.has(sel.rank1EmployeeId)) {
+            const stats = employeeStats.get(sel.rank1EmployeeId)!;
+            stats.totalPoints += 3;
+            stats.weightedScore += 3 * weightMultiplier;
+            stats.firstPlaceCount += 1;
+            stats.voteCount += 1;
+            stats.criteriaPoints[sel.criterionId] = (stats.criteriaPoints[sel.criterionId] || 0) + 3;
+          }
+
+          // Rank 2 (2 points)
+          if (sel.rank2EmployeeId && employeeStats.has(sel.rank2EmployeeId)) {
+            const stats = employeeStats.get(sel.rank2EmployeeId)!;
+            stats.totalPoints += 2;
+            stats.weightedScore += 2 * weightMultiplier;
+            stats.secondPlaceCount += 1;
+            stats.criteriaPoints[sel.criterionId] = (stats.criteriaPoints[sel.criterionId] || 0) + 2;
+          }
+
+          // Rank 3 (1 point)
+          if (sel.rank3EmployeeId && employeeStats.has(sel.rank3EmployeeId)) {
+            const stats = employeeStats.get(sel.rank3EmployeeId)!;
+            stats.totalPoints += 1;
+            stats.weightedScore += 1 * weightMultiplier;
+            stats.thirdPlaceCount += 1;
+            stats.criteriaPoints[sel.criterionId] = (stats.criteriaPoints[sel.criterionId] || 0) + 1;
+          }
+        });
+      } else if (vote.candidateId && employeeStats.has(vote.candidateId)) {
+        // Legacy vote support
+        const stats = employeeStats.get(vote.candidateId)!;
+        stats.totalPoints += 3;
+        stats.weightedScore += 3;
+        stats.firstPlaceCount += 1;
+        stats.voteCount += 1;
+      }
+    });
+
+    // Calculate maximum possible points to derive accurate percentage
+    const maxPossiblePoints = totalVotes > 0 ? totalVotes * 3 : 1;
+
+    const candidates: CandidateTally[] = officeEmployees
       .map((emp) => {
-        const count = candidateCounts[emp.id] || 0;
-        const percentage = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+        const stats = employeeStats.get(emp.id)!;
+        const percentage =
+          totalVotes > 0
+            ? Math.min(100, Math.round((stats.totalPoints / (totalVotes * 3 * CRITERIA.length)) * 100))
+            : 0;
+
         return {
           employeeId: emp.id,
           name: emp.name,
           designation: emp.designation,
-          voteCount: count,
+          totalPoints: stats.totalPoints,
+          weightedScore: Math.round(stats.weightedScore * 10) / 10,
+          firstPlaceCount: stats.firstPlaceCount,
+          secondPlaceCount: stats.secondPlaceCount,
+          thirdPlaceCount: stats.thirdPlaceCount,
+          criteriaPoints: stats.criteriaPoints,
+          voteCount: stats.firstPlaceCount,
           percentage,
         };
       })
-      .sort((a, b) => b.voteCount - a.voteCount || a.name.localeCompare(b.name));
+      .sort((a, b) => {
+        if (b.weightedScore !== a.weightedScore) {
+          return b.weightedScore - a.weightedScore;
+        }
+        if (b.totalPoints !== a.totalPoints) {
+          return b.totalPoints - a.totalPoints;
+        }
+        if (b.firstPlaceCount !== a.firstPlaceCount) {
+          return b.firstPlaceCount - a.firstPlaceCount;
+        }
+        return a.name.localeCompare(b.name);
+      });
 
     return {
       officeId: office.id,
@@ -418,17 +556,14 @@ export async function syncWithServerNow(): Promise<VoteRecord[]> {
 
 /**
  * Real-time Firebase Cloud Firestore Live Subscription
- * Listeners instantly push all votes to laptops, phones, tablets in <50ms!
  */
 export function subscribeToLiveVotes(
   onVotesChange: (votes: VoteRecord[], settings?: ElectionSettings, isLive?: boolean) => void
 ): () => void {
   let isUnmounted = false;
 
-  // 1. Initial local state push
   onVotesChange(getStoredVotes(), getElectionSettings(), true);
 
-  // 2. Real-time Firestore Listener for Votes
   const unsubscribeVotes = onSnapshot(
     collection(db, 'votes'),
     (snapshot) => {
@@ -437,18 +572,17 @@ export function subscribeToLiveVotes(
       snapshot.forEach((docSnap) => {
         liveVotes.push(docSnap.data() as VoteRecord);
       });
-      // Sort newest first
       liveVotes.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
       updateStoredVotes(liveVotes);
       onVotesChange(liveVotes, undefined, true);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'votes');
+      console.warn('Firestore votes subscription notice:', error?.message || error);
+      onVotesChange(getStoredVotes(), getElectionSettings(), false);
     }
   );
 
-  // 3. Real-time Firestore Listener for Settings (Anonymous vs Public toggle)
   const unsubscribeSettings = onSnapshot(
     doc(db, 'settings', 'global'),
     (docSnap) => {
@@ -460,7 +594,7 @@ export function subscribeToLiveVotes(
       }
     },
     (error) => {
-      handleFirestoreError(error, OperationType.GET, 'settings/global');
+      console.warn('Firestore settings subscription notice:', error?.message || error);
     }
   );
 

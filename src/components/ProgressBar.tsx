@@ -1,24 +1,21 @@
 import React from 'react';
 import { AppStep, OfficeId } from '../types';
-import { Check, Building, UserCheck, ShieldCheck, FileText } from 'lucide-react';
+import { Check, Building, Award, CheckCircle2, BookOpen } from 'lucide-react';
 
 interface ProgressBarProps {
   currentStep: AppStep;
   selectedOffice: OfficeId | null;
-  selectedCandidateId: number | null;
   voterName?: string;
   onStepClick?: (step: AppStep) => void;
   totalVotesCount: number;
   totalDivisionEmployees: number;
-  officeVotesCount?: number;
-  officeEmployeesCount?: number;
 }
 
 const STEPS: { key: AppStep; label: string; stepNum: number; icon: React.ComponentType<{ className?: string }> }[] = [
-  { key: 'select-office', label: 'Office & Voter', stepNum: 1, icon: Building },
-  { key: 'select-employee', label: 'Nominee', stepNum: 2, icon: UserCheck },
-  { key: 'review', label: 'Confirm', stepNum: 3, icon: ShieldCheck },
-  { key: 'success', label: 'Receipt', stepNum: 4, icon: FileText },
+  { key: 'guidelines', label: '1. Criteria', stepNum: 1, icon: BookOpen },
+  { key: 'select-office', label: '2. Your Office', stepNum: 2, icon: Building },
+  { key: 'criteria-voting', label: '3. Vote Top 3', stepNum: 3, icon: Award },
+  { key: 'success', label: '4. Submitted', stepNum: 4, icon: CheckCircle2 },
 ];
 
 export const ProgressBar: React.FC<ProgressBarProps> = ({
@@ -32,7 +29,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
   const isVoterSelected = !!(voterName && voterName.trim().length > 0);
 
   const getStepStatus = (stepKey: AppStep) => {
-    const stepOrder: AppStep[] = ['select-office', 'select-employee', 'review', 'success'];
+    const stepOrder: AppStep[] = ['guidelines', 'select-office', 'criteria-voting', 'success'];
     const currentIndex = stepOrder.indexOf(currentStep);
     const targetIndex = stepOrder.indexOf(stepKey);
 
@@ -46,14 +43,14 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-3.5 sm:p-4 max-w-5xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        {/* Stepper Steps (Horizontal scroll on very small phones) */}
+        {/* Stepper Steps */}
         <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 sm:pb-0 no-scrollbar">
           {STEPS.map((step) => {
             const status = getStepStatus(step.key);
-            // Step 2 is ONLY clickable if an office is chosen AND a voter has identified themselves
             const isClickable =
-              (step.key === 'select-office' && currentStep !== 'select-office') ||
-              (step.key === 'select-employee' && selectedOffice && isVoterSelected && currentStep !== 'select-employee');
+              step.key === 'guidelines' ||
+              step.key === 'select-office' ||
+              (step.key === 'criteria-voting' && selectedOffice && isVoterSelected);
 
             return (
               <button
@@ -71,9 +68,15 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
                     : 'bg-slate-100 text-slate-400'
                 }`}
               >
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] shrink-0 font-bold ${
-                  status === 'current' ? 'bg-white/20 text-white' : status === 'completed' ? 'bg-indigo-200/60 text-indigo-800' : 'bg-slate-200 text-slate-500'
-                }`}>
+                <div
+                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] shrink-0 font-bold ${
+                    status === 'current'
+                      ? 'bg-white/20 text-white'
+                      : status === 'completed'
+                      ? 'bg-indigo-200/60 text-indigo-800'
+                      : 'bg-slate-200 text-slate-500'
+                  }`}
+                >
                   {status === 'completed' ? (
                     <Check className="w-3 h-3 stroke-[3]" />
                   ) : (

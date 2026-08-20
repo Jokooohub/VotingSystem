@@ -1,0 +1,57 @@
+{
+  "entities": {
+    "CriterionSelection": {
+      "title": "CriterionSelection",
+      "description": "Top 3 picks for a specific award criterion",
+      "type": "object",
+      "properties": {
+        "criterionId": { "type": "string" },
+        "rank1EmployeeId": { "type": "number" },
+        "rank1EmployeeName": { "type": "string" },
+        "rank2EmployeeId": { "type": "number" },
+        "rank2EmployeeName": { "type": "string" },
+        "rank3EmployeeId": { "type": "number" },
+        "rank3EmployeeName": { "type": "string" }
+      },
+      "required": ["criterionId", "rank1EmployeeId", "rank1EmployeeName"]
+    },
+    "VoteRecord": {
+      "title": "VoteRecord",
+      "description": "Official multi-criteria Top 3 ballot submitted by an employee",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "officeId": { "type": "string" },
+        "voterId": { "type": "number" },
+        "voterName": { "type": "string" },
+        "criteriaSelections": {
+          "type": "array",
+          "items": { "$ref": "#/entities/CriterionSelection" }
+        },
+        "reason": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["officeId", "voterName", "timestamp"]
+    },
+    "ElectionSettings": {
+      "title": "ElectionSettings",
+      "description": "Global election configuration for DCFSSS",
+      "type": "object",
+      "properties": {
+        "isResultsPublic": { "type": "boolean" },
+        "adminName": { "type": "string" }
+      },
+      "required": ["isResultsPublic", "adminName"]
+    }
+  },
+  "firestore": {
+    "/votes/{voteId}": {
+      "schema": "VoteRecord",
+      "description": "Collection of all submitted votes across all offices"
+    },
+    "/settings/{settingsId}": {
+      "schema": "ElectionSettings",
+      "description": "Global election settings document"
+    }
+  }
+}
