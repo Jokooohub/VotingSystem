@@ -15,12 +15,18 @@ import {
   CandidateTally,
   ElectionSettings,
   CriterionSelection,
+  Participant,
+  Employee,
+  PopularityVoteRecord,
+  PopularityNomineeTally,
 } from '../types';
 import { EMPLOYEES, OFFICES, ALL_PARTICIPANTS } from '../data/officesData';
 import { CRITERIA } from '../data/criteriaData';
 
 const VOTES_STORAGE_KEY = 'dcfsss_voting_records_v4';
 const MY_VOTE_KEY = 'dcfsss_my_submitted_vote_v4';
+const POPULARITY_VOTES_STORAGE_KEY = 'dcfsss_popularity_votes_v4';
+const MY_POPULARITY_VOTE_KEY = 'dcfsss_my_popularity_vote_v4';
 const SETTINGS_STORAGE_KEY = 'dcfsss_election_settings_v4';
 const ADMIN_AUTH_KEY = 'dcfsss_admin_authenticated_v4';
 
@@ -158,12 +164,105 @@ export function updateStoredVotes(votes: VoteRecord[]): void {
 }
 
 /**
- * Checks if an employee has already cast their ballot.
+ * Identifies whether a participant, ID, or name corresponds to the Division Chief.
  */
-export function hasEmployeeVoted(voterNameOrId: string | number): boolean {
+export function isDivisionChief(
+  participantOrIdOrName: Participant | Employee | number | string | null | undefined
+): boolean {
+  if (!participantOrIdOrName) return false;
+  if (typeof participantOrIdOrName === 'object') {
+    if ('id' in participantOrIdOrName && participantOrIdOrName.id === 1) return true;
+    if ('officeId' in participantOrIdOrName && participantOrIdOrName.officeId === 'DCFSSS') return true;
+    if (
+      'designation' in participantOrIdOrName &&
+      participantOrIdOrName.designation?.toLowerCase().includes('division chief')
+    ) {
+      return true;
+    }
+    if (
+      'name' in participantOrIdOrName &&
+      (participantOrIdOrName.name.toLowerCase().includes('cloribel') ||
+        participantOrIdOrName.name.toLowerCase().includes('magichael'))
+    ) {
+      return true;
+    }
+    return false;
+  }
+  if (typeof participantOrIdOrName === 'number') {
+    return participantOrIdOrName === 1;
+  }
+  const clean = String(participantOrIdOrName).trim().toLowerCase();
+  return (
+    clean === '1' ||
+    clean.includes('cloribel') ||
+    clean.includes('magichael') ||
+    clean.includes('division chief')
+  );
+}
+
+/**
+ * Returns all office IDs for which the Division Chief has already cast a vote.
+ */
+export function getDivisionChiefVotedOffices(votes?: VoteRecord[]): OfficeId[] {
+  const allVotes = votes || getStoredVotes();
+  const chiefVotes = allVotes.filter(
+    (v) => v.voterId === 1 || (v.voterName && isDivisionChief(v.voterName))
+  );
+  return Array.from(new Set(chiefVotes.map((v) => v.officeId)));
+}
+
+/**
+ * Returns the office IDs that the Division Chief has not yet voted in.
+ */
+export function getDivisionChiefRemainingOffices(votes?: VoteRecord[]): OfficeId[] {
+  const voted = getDivisionChiefVotedOffices(votes);
+  return OFFICES.map((o) => o.id).filter((id) => !voted.includes(id));
+}
+
+/**
+ * Checks whether an employee has cast a ballot in a specific office.
+ */
+export function hasEmployeeVotedInOffice(
+  voterNameOrId: string | number,
+  officeId: OfficeId,
+  votes?: VoteRecord[]
+): boolean {
+  if (!voterNameOrId) return false;
+  const allVotes = votes || getStoredVotes();
+
+  if (typeof voterNameOrId === 'number') {
+    return allVotes.some((v) => v.voterId === voterNameOrId && v.officeId === officeId);
+  }
+
+  const cleanName = String(voterNameOrId).trim().toLowerCase();
+  return allVotes.some((v) => {
+    if (v.officeId !== officeId) return false;
+    if (v.voterId && String(v.voterId) === cleanName) return true;
+    if (v.voterName && v.voterName.trim().toLowerCase() === cleanName) return true;
+    return false;
+  });
+}
+
+/**
+ * Checks if an employee has already cast their ballot.
+ * If officeId is specified and the voter is the Division Chief, checks that specific office.
+ * For regular employees, checks if any ballot has been cast.
+ */
+export function hasEmployeeVoted(voterNameOrId: string | number, officeId?: OfficeId): boolean {
   if (!voterNameOrId) return false;
   const allVotes = getStoredVotes();
 
+  // Division Chief can vote in ALL offices (ECO, GSO, OCSS, DRRMO)
+  if (isDivisionChief(voterNameOrId)) {
+    if (officeId) {
+      return hasEmployeeVotedInOffice(voterNameOrId, officeId, allVotes);
+    }
+    // If no officeId passed, returns true only if all 4 offices are already voted
+    const votedOffices = getDivisionChiefVotedOffices(allVotes);
+    return OFFICES.every((o) => votedOffices.includes(o.id));
+  }
+
+  // Regular employees: 1 vote allowed across the entire election
   if (typeof voterNameOrId === 'number') {
     return allVotes.some((v) => v.voterId === voterNameOrId);
   }
@@ -177,26 +276,34 @@ export function hasEmployeeVoted(voterNameOrId: string | number): boolean {
 }
 
 /**
- * Gets the submitted vote record for a specific employee.
+ * Gets the submitted vote record for a specific employee (optionally filtered by office).
  */
-export function getVoteByVoter(voterNameOrId: string | number): VoteRecord | undefined {
+export function getVoteByVoter(voterNameOrId: string | number, officeId?: OfficeId): VoteRecord | undefined {
   if (!voterNameOrId) return undefined;
   const allVotes = getStoredVotes();
 
   if (typeof voterNameOrId === 'number') {
-    return allVotes.find((v) => v.voterId === voterNameOrId);
+    return allVotes.find((v) => {
+      if (v.voterId !== voterNameOrId) return false;
+      if (officeId && v.officeId !== officeId) return false;
+      return true;
+    });
   }
 
   const cleanName = String(voterNameOrId).trim().toLowerCase();
   return allVotes.find((v) => {
-    if (v.voterId && String(v.voterId) === cleanName) return true;
-    if (v.voterName && v.voterName.trim().toLowerCase() === cleanName) return true;
-    return false;
+    const isNameMatch =
+      (v.voterId && String(v.voterId) === cleanName) ||
+      (v.voterName && v.voterName.trim().toLowerCase() === cleanName);
+    if (!isNameMatch) return false;
+    if (officeId && v.officeId !== officeId) return false;
+    return true;
   });
 }
 
 /**
  * Returns a list of participant IDs who have already cast their vote.
+ * For the Division Chief (id: 1), only added if all 4 offices are completed.
  */
 export function getVotedParticipantIds(): Set<number> {
   const allVotes = getStoredVotes();
@@ -204,13 +311,27 @@ export function getVotedParticipantIds(): Set<number> {
 
   allVotes.forEach((vote) => {
     if (typeof vote.voterId === 'number') {
-      votedIds.add(vote.voterId);
+      if (vote.voterId === 1) {
+        const chiefOffices = getDivisionChiefVotedOffices(allVotes);
+        if (OFFICES.every((o) => chiefOffices.includes(o.id))) {
+          votedIds.add(1);
+        }
+      } else {
+        votedIds.add(vote.voterId);
+      }
     } else if (vote.voterName) {
       const match = ALL_PARTICIPANTS.find(
         (p) => p.name.trim().toLowerCase() === vote.voterName.trim().toLowerCase()
       );
       if (match) {
-        votedIds.add(match.id);
+        if (match.id === 1) {
+          const chiefOffices = getDivisionChiefVotedOffices(allVotes);
+          if (OFFICES.every((o) => chiefOffices.includes(o.id))) {
+            votedIds.add(match.id);
+          }
+        } else {
+          votedIds.add(match.id);
+        }
       }
     }
   });
@@ -219,7 +340,23 @@ export function getVotedParticipantIds(): Set<number> {
 }
 
 /**
+ * Counts unique participants who have cast at least one ballot.
+ */
+export function getDistinctVotersCount(votes: VoteRecord[]): number {
+  const voterKeys = new Set<string>();
+  votes.forEach((v) => {
+    if (v.voterId) {
+      voterKeys.add(String(v.voterId));
+    } else if (v.voterName) {
+      voterKeys.add(v.voterName.trim().toLowerCase());
+    }
+  });
+  return voterKeys.size;
+}
+
+/**
  * Saves a new multi-criteria vote record to Google Cloud Firestore and local backup.
+ * Division Chief is permitted to submit one ballot per office (all 4 offices).
  */
 export async function saveVoteRecord(
   vote: {
@@ -231,13 +368,20 @@ export async function saveVoteRecord(
   }
 ): Promise<VoteRecord> {
   const allVotes = getStoredVotes();
+  const isChief = isDivisionChief(vote.voterId || vote.voterName);
 
-  if (vote.voterId && hasEmployeeVoted(vote.voterId)) {
-    throw new Error(`Ballot already cast: ${vote.voterName || 'This employee'} has already submitted a vote.`);
-  }
+  if (isChief) {
+    if (hasEmployeeVotedInOffice(vote.voterId || vote.voterName, vote.officeId, allVotes)) {
+      throw new Error(`Ballot already cast: The Division Chief has already submitted an official ballot for ${vote.officeId}.`);
+    }
+  } else {
+    if (vote.voterId && hasEmployeeVoted(vote.voterId)) {
+      throw new Error(`Ballot already cast: ${vote.voterName || 'This employee'} has already submitted a vote.`);
+    }
 
-  if (vote.voterName && hasEmployeeVoted(vote.voterName)) {
-    throw new Error(`Ballot already cast: "${vote.voterName}" has already submitted a vote.`);
+    if (vote.voterName && hasEmployeeVoted(vote.voterName)) {
+      throw new Error(`Ballot already cast: "${vote.voterName}" has already submitted a vote.`);
+    }
   }
 
   const timestamp = new Date().toISOString();
@@ -318,44 +462,44 @@ export async function saveVoteRecord(
 
 /**
  * Resets/deletes the vote of a specific employee from Firestore & local.
+ * If officeId is specified, only that office's ballot is removed.
  */
-export async function resetSingleEmployeeVote(voterIdOrName: number | string): Promise<VoteRecord[]> {
+export async function resetSingleEmployeeVote(
+  voterIdOrName: number | string,
+  officeId?: OfficeId
+): Promise<VoteRecord[]> {
   const allVotes = getStoredVotes();
   let updatedVotes: VoteRecord[] = [];
   const targetVotes: VoteRecord[] = [];
 
-  if (typeof voterIdOrName === 'number') {
-    updatedVotes = allVotes.filter((v) => {
-      if (v.voterId === voterIdOrName) {
-        targetVotes.push(v);
-        return false;
-      }
-      return true;
-    });
-  } else {
-    const cleanName = String(voterIdOrName).trim().toLowerCase();
-    updatedVotes = allVotes.filter((v) => {
-      if (
+  const matchesTarget = (v: VoteRecord): boolean => {
+    let voterMatches = false;
+    if (typeof voterIdOrName === 'number') {
+      voterMatches = v.voterId === voterIdOrName;
+    } else {
+      const cleanName = String(voterIdOrName).trim().toLowerCase();
+      voterMatches =
         (v.voterId && String(v.voterId) === cleanName) ||
-        (v.voterName && v.voterName.trim().toLowerCase() === cleanName)
-      ) {
-        targetVotes.push(v);
-        return false;
-      }
-      return true;
-    });
-  }
+        (v.voterName && v.voterName.trim().toLowerCase() === cleanName);
+    }
+    if (!voterMatches) return false;
+    if (officeId && v.officeId !== officeId) return false;
+    return true;
+  };
+
+  updatedVotes = allVotes.filter((v) => {
+    if (matchesTarget(v)) {
+      targetVotes.push(v);
+      return false;
+    }
+    return true;
+  });
 
   updateStoredVotes(updatedVotes);
 
   const myVote = getMySubmittedVote();
-  if (myVote) {
-    if (
-      (typeof voterIdOrName === 'number' && myVote.voterId === voterIdOrName) ||
-      (typeof voterIdOrName === 'string' && myVote.voterName?.trim().toLowerCase() === String(voterIdOrName).trim().toLowerCase())
-    ) {
-      clearMySubmittedVote();
-    }
+  if (myVote && matchesTarget(myVote)) {
+    clearMySubmittedVote();
   }
 
   // Delete from Cloud Firestore
@@ -406,9 +550,9 @@ export async function resetAllVotesToDefault(): Promise<void> {
 
 /**
  * Computes official Office Tallies with criteria-weighted scoring.
- * 🥇 1st Place = 3 points
- * 🥈 2nd Place = 2 points
- * 🥉 3rd Place = 1 point
+ * Rank 1 = 3 points
+ * Rank 2 = 2 points
+ * Rank 3 = 1 point
  * Weighted Score = Sum(Points in Criterion * (Criterion Weight / 100))
  */
 export function getOfficeTallies(votes: VoteRecord[]): OfficeTally[] {
@@ -603,4 +747,322 @@ export function subscribeToLiveVotes(
     unsubscribeVotes();
     unsubscribeSettings();
   };
+}
+
+// ==========================================
+// POPULARITY AWARD (PEOPLE'S CHOICE) STORAGE
+// ==========================================
+
+export function getStoredPopularityVotes(): PopularityVoteRecord[] {
+  try {
+    const raw = localStorage.getItem(POPULARITY_VOTES_STORAGE_KEY);
+    if (!raw) {
+      localStorage.setItem(POPULARITY_VOTES_STORAGE_KEY, JSON.stringify([]));
+      return [];
+    }
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error('Failed to read popularity votes from localStorage', err);
+    return [];
+  }
+}
+
+export function updateStoredPopularityVotes(votes: PopularityVoteRecord[]): void {
+  localStorage.setItem(POPULARITY_VOTES_STORAGE_KEY, JSON.stringify(votes));
+}
+
+export function getMySubmittedPopularityVote(): PopularityVoteRecord | null {
+  try {
+    const raw = localStorage.getItem(MY_POPULARITY_VOTE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearMySubmittedPopularityVote(): void {
+  localStorage.removeItem(MY_POPULARITY_VOTE_KEY);
+}
+
+/**
+ * Checks if a participant has already cast their Popularity Award ballot.
+ */
+export function hasEmployeeVotedPopularity(voterNameOrId: string | number): boolean {
+  if (!voterNameOrId) return false;
+  const allVotes = getStoredPopularityVotes();
+
+  if (typeof voterNameOrId === 'number') {
+    return allVotes.some((v) => v.voterId === voterNameOrId);
+  }
+
+  const cleanName = String(voterNameOrId).trim().toLowerCase();
+  return allVotes.some((v) => {
+    if (v.voterId && String(v.voterId) === cleanName) return true;
+    if (v.voterName && v.voterName.trim().toLowerCase() === cleanName) return true;
+    return false;
+  });
+}
+
+/**
+ * Gets a participant's Popularity Award ballot if cast.
+ */
+export function getPopularityVoteByVoter(voterNameOrId: string | number): PopularityVoteRecord | undefined {
+  if (!voterNameOrId) return undefined;
+  const allVotes = getStoredPopularityVotes();
+
+  if (typeof voterNameOrId === 'number') {
+    return allVotes.find((v) => v.voterId === voterNameOrId);
+  }
+
+  const cleanName = String(voterNameOrId).trim().toLowerCase();
+  return allVotes.find((v) => {
+    if (v.voterId && String(v.voterId) === cleanName) return true;
+    if (v.voterName && v.voterName.trim().toLowerCase() === cleanName) return true;
+    return false;
+  });
+}
+
+/**
+ * Saves a new Popularity Award ballot to Firestore & local storage.
+ */
+export async function savePopularityVoteRecord(vote: {
+  voterId?: number;
+  voterName: string;
+  voterOfficeId?: OfficeId | 'DCFSSS';
+  nomineeId: number;
+  nomineeName: string;
+  nomineeOfficeId: OfficeId | 'DCFSSS';
+  nomineeDesignation?: string;
+  message?: string;
+}): Promise<PopularityVoteRecord> {
+  const allVotes = getStoredPopularityVotes();
+
+  if (vote.voterId && hasEmployeeVotedPopularity(vote.voterId)) {
+    throw new Error(`Ballot already cast: ${vote.voterName || 'This participant'} has already submitted a Popularity Award vote.`);
+  }
+
+  if (vote.voterName && hasEmployeeVotedPopularity(vote.voterName)) {
+    throw new Error(`Ballot already cast: "${vote.voterName}" has already submitted a Popularity Award vote.`);
+  }
+
+  if (vote.voterId && vote.voterId === vote.nomineeId) {
+    throw new Error('Self-voting is not allowed for the Popularity Award.');
+  }
+
+  const timestamp = new Date().toISOString();
+  const voteDocId = `pop-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  const cleanMessage = vote.message?.trim() || '';
+  const verificationCode = `POP-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+  const newRecord: PopularityVoteRecord = {
+    id: voteDocId,
+    voterId: typeof vote.voterId === 'number' ? vote.voterId : undefined,
+    voterName: vote.voterName,
+    voterOfficeId: vote.voterOfficeId,
+    nomineeId: vote.nomineeId,
+    nomineeName: vote.nomineeName,
+    nomineeOfficeId: vote.nomineeOfficeId,
+    nomineeDesignation: vote.nomineeDesignation,
+    message: cleanMessage,
+    timestamp,
+    verificationCode,
+  };
+
+  // 1. Optimistic local update
+  const updated = [newRecord, ...allVotes];
+  updateStoredPopularityVotes(updated);
+  localStorage.setItem(MY_POPULARITY_VOTE_KEY, JSON.stringify(newRecord));
+
+  // 2. Write to Firestore
+  const firestoreData: Record<string, any> = {
+    id: voteDocId,
+    voterName: vote.voterName,
+    nomineeId: vote.nomineeId,
+    nomineeName: vote.nomineeName,
+    nomineeOfficeId: vote.nomineeOfficeId,
+    timestamp,
+    verificationCode,
+  };
+
+  if (typeof vote.voterId === 'number') firestoreData.voterId = vote.voterId;
+  if (vote.voterOfficeId) firestoreData.voterOfficeId = vote.voterOfficeId;
+  if (vote.nomineeDesignation) firestoreData.nomineeDesignation = vote.nomineeDesignation;
+  if (cleanMessage) firestoreData.message = cleanMessage;
+
+  try {
+    const voteRef = doc(db, 'popularity_votes', voteDocId);
+    await setDoc(voteRef, firestoreData);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `popularity_votes/${voteDocId}`);
+  }
+
+  return newRecord;
+}
+
+/**
+ * Resets a single participant's Popularity Award ballot.
+ */
+export async function resetSinglePopularityVote(
+  voterIdOrName: number | string
+): Promise<PopularityVoteRecord[]> {
+  const allVotes = getStoredPopularityVotes();
+  let updatedVotes: PopularityVoteRecord[] = [];
+  const targetVotes: PopularityVoteRecord[] = [];
+
+  const matchesTarget = (v: PopularityVoteRecord): boolean => {
+    if (typeof voterIdOrName === 'number') {
+      return v.voterId === voterIdOrName;
+    }
+    const cleanName = String(voterIdOrName).trim().toLowerCase();
+    return (
+      (v.voterId && String(v.voterId) === cleanName) ||
+      (v.voterName && v.voterName.trim().toLowerCase() === cleanName)
+    );
+  };
+
+  updatedVotes = allVotes.filter((v) => {
+    if (matchesTarget(v)) {
+      targetVotes.push(v);
+      return false;
+    }
+    return true;
+  });
+
+  updateStoredPopularityVotes(updatedVotes);
+
+  const myVote = getMySubmittedPopularityVote();
+  if (myVote && matchesTarget(myVote)) {
+    clearMySubmittedPopularityVote();
+  }
+
+  try {
+    for (const target of targetVotes) {
+      if (target.id) {
+        await deleteDoc(doc(db, 'popularity_votes', target.id));
+      }
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, 'popularity_votes');
+  }
+
+  return updatedVotes;
+}
+
+/**
+ * Resets all Popularity Award votes.
+ */
+export async function resetAllPopularityVotes(): Promise<void> {
+  updateStoredPopularityVotes([]);
+  clearMySubmittedPopularityVote();
+
+  try {
+    const snapshot = await getDocs(collection(db, 'popularity_votes'));
+    const batch = writeBatch(db);
+    snapshot.docs.forEach((docItem) => {
+      batch.delete(docItem.ref);
+    });
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, 'popularity_votes');
+  }
+}
+
+/**
+ * Computes Popularity Award standings for all division personnel.
+ */
+export function getPopularityTallies(popularityVotes: PopularityVoteRecord[]): PopularityNomineeTally[] {
+  const totalVotes = popularityVotes.length;
+
+  // Track votes and testimonials for each person in ALL_PARTICIPANTS
+  const talliesMap = new Map<
+    number,
+    {
+      employeeId: number;
+      name: string;
+      designation: string;
+      officeId: OfficeId | 'DCFSSS';
+      voteCount: number;
+      messages: { voterName: string; message: string; timestamp: string }[];
+    }
+  >();
+
+  ALL_PARTICIPANTS.forEach((p) => {
+    talliesMap.set(p.id, {
+      employeeId: p.id,
+      name: p.name,
+      designation: p.designation,
+      officeId: p.officeId,
+      voteCount: 0,
+      messages: [],
+    });
+  });
+
+  popularityVotes.forEach((vote) => {
+    if (talliesMap.has(vote.nomineeId)) {
+      const tally = talliesMap.get(vote.nomineeId)!;
+      tally.voteCount += 1;
+      if (vote.message && vote.message.trim().length > 0) {
+        tally.messages.push({
+          voterName: vote.voterName,
+          message: vote.message.trim(),
+          timestamp: vote.timestamp,
+        });
+      }
+    } else {
+      // Dynamic fallback for any unlisted nominee
+      talliesMap.set(vote.nomineeId, {
+        employeeId: vote.nomineeId,
+        name: vote.nomineeName,
+        designation: vote.nomineeDesignation || 'Division Personnel',
+        officeId: vote.nomineeOfficeId,
+        voteCount: 1,
+        messages: vote.message ? [{
+          voterName: vote.voterName,
+          message: vote.message.trim(),
+          timestamp: vote.timestamp,
+        }] : [],
+      });
+    }
+  });
+
+  return Array.from(talliesMap.values())
+    .map((item) => ({
+      ...item,
+      percentage: totalVotes > 0 ? Math.round((item.voteCount / totalVotes) * 100) : 0,
+    }))
+    .sort((a, b) => {
+      if (b.voteCount !== a.voteCount) {
+        return b.voteCount - a.voteCount;
+      }
+      return a.name.localeCompare(b.name);
+    });
+}
+
+/**
+ * Real-time Firebase Cloud Firestore Live Subscription for Popularity Votes
+ */
+export function subscribeToLivePopularityVotes(
+  onVotesChange: (votes: PopularityVoteRecord[], isLive?: boolean) => void
+): () => void {
+  onVotesChange(getStoredPopularityVotes(), true);
+
+  const unsubscribe = onSnapshot(
+    collection(db, 'popularity_votes'),
+    (snapshot) => {
+      const liveVotes: PopularityVoteRecord[] = [];
+      snapshot.forEach((docSnap) => {
+        liveVotes.push(docSnap.data() as PopularityVoteRecord);
+      });
+      liveVotes.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+      updateStoredPopularityVotes(liveVotes);
+      onVotesChange(liveVotes, true);
+    },
+    (error) => {
+      console.warn('Firestore popularity votes subscription notice:', error?.message || error);
+      onVotesChange(getStoredPopularityVotes(), false);
+    }
+  );
+
+  return unsubscribe;
 }

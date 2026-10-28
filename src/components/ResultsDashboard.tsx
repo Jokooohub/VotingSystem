@@ -1,9 +1,17 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { VoteRecord, OfficeId, ElectionSettings } from '../types';
+import { VoteRecord, OfficeId, ElectionSettings, PopularityVoteRecord, PopularityNomineeTally, AwardCategory } from '../types';
 import { OFFICES, EMPLOYEES, ALL_PARTICIPANTS, getAnonymousProfile } from '../data/officesData';
 import { CRITERIA } from '../data/criteriaData';
-import { ADMIN_NAME, hasEmployeeVoted, syncWithServerNow } from '../utils/storage';
+import {
+  ADMIN_NAME,
+  hasEmployeeVoted,
+  syncWithServerNow,
+  isDivisionChief,
+  getDivisionChiefVotedOffices,
+  getDistinctVotersCount,
+  getPopularityTallies,
+} from '../utils/storage';
 import {
   Download,
   Vote,
@@ -26,10 +34,17 @@ import {
   Clock,
   Smile,
   Compass,
+  Heart,
+  MessageSquare,
+  ThumbsUp,
+  X,
+  Check,
 } from 'lucide-react';
+import { PopularityResultsView } from './PopularityResultsView';
 
 interface ResultsDashboardProps {
   votes: VoteRecord[];
+  popularityVotes?: PopularityVoteRecord[];
   isAdmin: boolean;
   settings: ElectionSettings;
   onTogglePublicResults: (isPublic: boolean) => void;
@@ -37,11 +52,14 @@ interface ResultsDashboardProps {
   onAdminLogoutClick: () => void;
   onCastVoteClick: () => void;
   onResetElection: () => void;
-  onResetSingleVote: (voterIdOrName: number | string, voterName: string) => void;
+  onResetSingleVote: (voterIdOrName: number | string, voterName: string, officeId?: OfficeId) => void;
+  onResetPopularityElection?: () => void;
+  onResetSinglePopularityVote?: (voterIdOrName: number | string, voterName: string) => void;
 }
 
 export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   votes,
+  popularityVotes = [],
   isAdmin,
   settings,
   onTogglePublicResults,
@@ -50,13 +68,20 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   onCastVoteClick,
   onResetElection,
   onResetSingleVote,
+  onResetPopularityElection,
+  onResetSinglePopularityVote,
 }) => {
+  const [activeAwardTab, setActiveAwardTab] = useState<AwardCategory>('best-employee');
   const [rankingScope, setRankingScope] = useState<'global' | 'local'>('global');
   const [selectedOfficeFilter, setSelectedOfficeFilter] = useState<OfficeId>('ECO');
   const [selectedCriterionFilter, setSelectedCriterionFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [popSearchQuery, setPopSearchQuery] = useState('');
+  const [popOfficeFilter, setPopOfficeFilter] = useState<'all' | OfficeId | 'DCFSSS'>('all');
+  const [selectedNomineeTestimonials, setSelectedNomineeTestimonials] = useState<PopularityNomineeTally | null>(null);
   const [adminViewMode, setAdminViewMode] = useState<'leaderboard' | 'voter-ledger'>('leaderboard');
   const [ledgerFilter, setLedgerFilter] = useState<'all' | 'voted' | 'pending'>('all');
+  const [adminLedgerAward, setAdminLedgerAward] = useState<AwardCategory>('best-employee');
   const [adminPreviewAnonymous, setAdminPreviewAnonymous] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -67,8 +92,10 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   };
 
   const totalVotes = votes.length;
+  const popTotalVotes = popularityVotes.length;
   const totalEmployees = ALL_PARTICIPANTS.length;
   const divisionTurnoutPercent = Math.min(100, Math.round((totalVotes / totalEmployees) * 100));
+  const popTurnoutPercent = Math.min(100, Math.round((popTotalVotes / totalEmployees) * 100));
 
   const showRealNames = settings.isResultsPublic || (isAdmin && !adminPreviewAnonymous);
 
@@ -221,8 +248,82 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   const top3 = filteredRankings[2];
   const runnerUps = filteredRankings.slice(3);
 
+  // Popularity Award Rankings Computation
+  const popularityRankings = useMemo(() => {
+    const rawTallies = getPopularityTallies(popularityVotes);
+    let currentRank = 1;
+    return rawTallies.map((item, idx) => {
+      if (idx > 0 && item.voteCount < rawTallies[idx - 1].voteCount) {
+        currentRank = idx + 1;
+      }
+      return {
+        ...item,
+        rank: currentRank,
+        codename: getAnonymousProfile(item.employeeId),
+      };
+    });
+  }, [popularityVotes]);
+
+  const filteredPopularityRankings = useMemo(() => {
+    let list = popularityRankings;
+    if (popOfficeFilter !== 'all') {
+      list = list.filter((p) => p.officeId === popOfficeFilter);
+    }
+    if (popSearchQuery.trim()) {
+      const q = popSearchQuery.toLowerCase();
+      list = list.filter((p) => {
+        if (showRealNames) {
+          return (
+            p.name.toLowerCase().includes(q) ||
+            p.designation.toLowerCase().includes(q) ||
+            p.codename.name.toLowerCase().includes(q) ||
+            p.officeId.toLowerCase().includes(q)
+          );
+        }
+        return (
+          p.codename.name.toLowerCase().includes(q) ||
+          p.officeId.toLowerCase().includes(q)
+        );
+      });
+    }
+    return list;
+  }, [popularityRankings, popOfficeFilter, popSearchQuery, showRealNames]);
+
+  const popTop1 = filteredPopularityRankings[0];
+  const popTop2 = filteredPopularityRankings[1];
+  const popTop3 = filteredPopularityRankings[2];
+  const popRunnerUps = filteredPopularityRankings.slice(3);
+
   // Export CSV
   const handleExportCSV = () => {
+    if (activeAwardTab === 'popularity') {
+      let csvContent = 'data:text/csv;charset=utf-8,';
+      csvContent += 'DCFSSS POPULARITY AWARD 2026 - PEOPLE\'S CHOICE OFFICIAL REPORT\n\n';
+      csvContent += 'Rank,Personnel ID,Nominee Name,Anonymous Codename,Office,Designation,Total Votes,Vote Percentage\n';
+      popularityRankings.forEach((cand) => {
+        const nameExport = showRealNames || isAdmin ? cand.name : cand.codename.name;
+        const desigExport = showRealNames || isAdmin ? cand.designation : '[Protected Anonymous]';
+        csvContent += `${cand.rank},"${cand.employeeId}","${nameExport}","${cand.codename.name}","${cand.officeId}","${desigExport}",${cand.voteCount},${cand.percentage}%\n`;
+      });
+
+      if (isAdmin) {
+        csvContent += '\n--- OFFICIAL POPULARITY VOTER AUDIT LEDGER ---\n';
+        csvContent += 'Voter Name,Voter Office,Nominee Chosen,Nominee Office,Timestamp,Commendation\n';
+        popularityVotes.forEach((v) => {
+          csvContent += `"${v.voterName}","${v.voterOfficeId || ''}","${v.nomineeName}","${v.nomineeOfficeId}","${v.timestamp}","${v.message || ''}"\n`;
+        });
+      }
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `DCFSSS_Popularity_Award_Report_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
+
     let csvContent = 'data:text/csv;charset=utf-8,';
     csvContent += 'DCFSSS BEST EMPLOYEE AWARD 2026 - OFFICIAL ELECTION REPORT\n\n';
 
@@ -231,7 +332,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
     rankedAllEmployees.forEach((cand) => {
       const nameExport = showRealNames || isAdmin ? cand.name : cand.codename.name;
       const desigExport = showRealNames || isAdmin ? cand.designation : '[Protected Anonymous]';
-      csvContent += `${cand.rank},"${cand.employeeId}","${nameExport}","${cand.codename.avatar} ${cand.codename.name}","${cand.officeId}","${desigExport}",${cand.weightedScore},${cand.totalPoints},${cand.firstPlaceCount},${cand.secondPlaceCount},${cand.thirdPlaceCount}\n`;
+      csvContent += `${cand.rank},"${cand.employeeId}","${nameExport}","${cand.codename.name}","${cand.officeId}","${desigExport}",${cand.weightedScore},${cand.totalPoints},${cand.firstPlaceCount},${cand.secondPlaceCount},${cand.thirdPlaceCount}\n`;
     });
 
     if (isAdmin) {
@@ -253,7 +354,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
 
   return (
     <div className="space-y-4 sm:space-y-6 max-w-4xl mx-auto pb-16">
-      {/* 🛡️ Admin Control Bar */}
+      {/* Admin Control Bar */}
       {isAdmin && (
         <motion.div
           initial={{ opacity: 0, y: -6 }}
@@ -337,7 +438,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                     : 'text-slate-400 hover:text-white bg-slate-800'
                 }`}
               >
-                Voter Audit Roster ({totalVotes}/{totalEmployees})
+                Voter Audit Personnel ({activeAwardTab === 'popularity' ? `${popTotalVotes}/${totalEmployees}` : `${totalVotes}/${totalEmployees}`})
               </button>
             </div>
 
@@ -348,24 +449,71 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                 className="text-xs text-indigo-300 hover:text-white flex items-center gap-1 cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>Export CSV Report</span>
+                <span>Export CSV ({activeAwardTab === 'popularity' ? 'Popularity' : 'Best Employee'})</span>
               </button>
               <button
                 type="button"
-                onClick={onResetElection}
+                onClick={activeAwardTab === 'popularity' ? onResetPopularityElection : onResetElection}
                 className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 ml-3 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset All Votes</span>
+                <span>{activeAwardTab === 'popularity' ? 'Reset Popularity Votes' : 'Reset Best Employee Votes'}</span>
               </button>
             </div>
           </div>
         </motion.div>
       )}
 
-      {/* Main Leaderboard View */}
-      {adminViewMode === 'leaderboard' ? (
-        <div className="space-y-4">
+      {/* Award Category Switcher Tabs */}
+      <div className="flex items-center justify-center p-1.5 bg-slate-200/90 rounded-2xl border border-slate-300 max-w-xl mx-auto shadow-2xs">
+        <button
+          type="button"
+          onClick={() => setActiveAwardTab('best-employee')}
+          className={`flex-1 min-h-[44px] px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            activeAwardTab === 'best-employee'
+              ? 'bg-white text-indigo-700 shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Trophy className="w-4 h-4 text-amber-500 shrink-0" />
+          <span>Best Employee Award</span>
+          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
+            {totalVotes}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveAwardTab('popularity')}
+          className={`flex-1 min-h-[44px] px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            activeAwardTab === 'popularity'
+              ? 'bg-white text-rose-700 shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Heart className="w-4 h-4 fill-rose-500 text-rose-500 shrink-0" />
+          <span>Popularity Award</span>
+          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-rose-50 text-rose-700 border border-rose-100">
+            {popTotalVotes}
+          </span>
+        </button>
+      </div>
+
+      {/* Main Award Content */}
+      {activeAwardTab === 'popularity' ? (
+        <PopularityResultsView
+          popularityVotes={popularityVotes}
+          isAdmin={isAdmin}
+          showRealNames={showRealNames}
+          adminViewMode={adminViewMode}
+          ledgerFilter={ledgerFilter}
+          onLedgerFilterChange={setLedgerFilter}
+          onResetSingleVote={onResetSinglePopularityVote}
+        />
+      ) : (
+        /* Main Leaderboard View for Best Employee */
+        adminViewMode === 'leaderboard' ? (
+          <div className="space-y-4">
           {/* Header Summary & Stats */}
           <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
@@ -412,7 +560,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
-                🏆 Overall (All 5 Weighted Criteria)
+                Overall (All 5 Weighted Criteria)
               </button>
               {CRITERIA.map((c) => (
                 <button
@@ -477,20 +625,20 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
             </div>
           </div>
 
-          {/* 🏆 Top 3 Podium (Gold, Silver, Bronze) */}
+          {/* Top 3 Podium (Gold, Silver, Bronze) */}
           {top1 && top1.totalPoints > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* 🥇 1st Place Champion */}
+              {/* 1st Place Champion */}
               <div className="sm:order-2 bg-gradient-to-b from-amber-50 to-white rounded-2xl border-2 border-amber-300 p-4 shadow-xs text-center space-y-2 relative overflow-hidden">
                 <div className="absolute top-2 right-2 bg-amber-400 text-amber-950 font-black text-[10px] px-2 py-0.5 rounded-full shadow-2xs">
-                  🥇 1st Rank
+                  1st Rank
                 </div>
                 <div className="w-12 h-12 rounded-2xl bg-amber-400 text-amber-950 flex items-center justify-center font-black text-lg mx-auto shadow-sm">
-                  🥇
+                  1
                 </div>
                 <div>
                   <h3 className="text-sm font-black text-slate-900 truncate">
-                    {showRealNames ? top1.name : `${top1.codename.avatar} ${top1.codename.name}`}
+                    {showRealNames ? top1.name : top1.codename.name}
                   </h3>
                   {showRealNames && (
                     <p className="text-[11px] text-slate-500 truncate">{top1.designation}</p>
@@ -511,18 +659,18 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                 </div>
               </div>
 
-              {/* 🥈 2nd Place */}
+              {/* 2nd Place */}
               {top2 && (
                 <div className="sm:order-1 bg-gradient-to-b from-slate-50 to-white rounded-2xl border border-slate-300 p-4 shadow-xs text-center space-y-2 relative">
-                  <div className="absolute top-2 right-2 bg-slate-300 text-slate-900 font-black text-[10px] px-2 py-0.5 rounded-full shadow-2xs">
-                    🥈 2nd Rank
+                  <div className="absolute top-2 right-2 bg-slate-200 text-slate-800 font-black text-[10px] px-2 py-0.5 rounded-full shadow-2xs">
+                    2nd Rank
                   </div>
                   <div className="w-10 h-10 rounded-2xl bg-slate-300 text-slate-800 flex items-center justify-center font-black text-base mx-auto shadow-2xs">
-                    🥈
+                    2
                   </div>
                   <div>
                     <h3 className="text-xs font-bold text-slate-900 truncate">
-                      {showRealNames ? top2.name : `${top2.codename.avatar} ${top2.codename.name}`}
+                      {showRealNames ? top2.name : top2.codename.name}
                     </h3>
                     {showRealNames && (
                       <p className="text-[11px] text-slate-500 truncate">{top2.designation}</p>
@@ -544,18 +692,18 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                 </div>
               )}
 
-              {/* 🥉 3rd Place */}
+              {/* 3rd Place */}
               {top3 && (
                 <div className="sm:order-3 bg-gradient-to-b from-amber-50/40 to-white rounded-2xl border border-amber-200 p-4 shadow-xs text-center space-y-2 relative">
-                  <div className="absolute top-2 right-2 bg-amber-600 text-white font-black text-[10px] px-2 py-0.5 rounded-full shadow-2xs">
-                    🥉 3rd Rank
+                  <div className="absolute top-2 right-2 bg-amber-100 text-amber-900 font-black text-[10px] px-2 py-0.5 rounded-full shadow-2xs border border-amber-200">
+                    3rd Rank
                   </div>
                   <div className="w-10 h-10 rounded-2xl bg-amber-600 text-white flex items-center justify-center font-black text-base mx-auto shadow-2xs">
-                    🥉
+                    3
                   </div>
                   <div>
                     <h3 className="text-xs font-bold text-slate-900 truncate">
-                      {showRealNames ? top3.name : `${top3.codename.avatar} ${top3.codename.name}`}
+                      {showRealNames ? top3.name : top3.codename.name}
                     </h3>
                     {showRealNames && (
                       <p className="text-[11px] text-slate-500 truncate">{top3.designation}</p>
@@ -583,16 +731,16 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
           <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 overflow-hidden shadow-xs">
             <div className="p-3.5 sm:p-4 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
               <span className="text-xs font-bold text-slate-800">
-                Official Roster Leaderboard ({filteredRankings.length} Nominees)
+                Official Personnel Leaderboard ({filteredRankings.length} Nominees)
               </span>
               <span className="text-[11px] text-slate-400">
-                Points: 🥇3pts, 🥈2pts, 🥉1pt
+                Points: 1st: 3pts, 2nd: 2pts, 3rd: 1pt
               </span>
             </div>
 
             <div className="divide-y divide-slate-100">
               {filteredRankings.map((cand, idx) => {
-                const displayName = showRealNames ? cand.name : `${cand.codename.avatar} ${cand.codename.name}`;
+                const displayName = showRealNames ? cand.name : cand.codename.name;
                 const isLeader = idx === 0 && cand.totalPoints > 0;
 
                 return (
@@ -637,13 +785,13 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                     <div className="flex items-center gap-4 shrink-0 text-right">
                       <div className="hidden sm:flex items-center gap-2 text-xs">
                         <span className="text-[11px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                          🥇 {cand.firstPlaceCount}
+                          1st: {cand.firstPlaceCount}
                         </span>
                         <span className="text-[11px] text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                          🥈 {cand.secondPlaceCount}
+                          2nd: {cand.secondPlaceCount}
                         </span>
                         <span className="text-[11px] text-amber-800 bg-amber-50/50 px-1.5 py-0.5 rounded border border-amber-200/60">
-                          🥉 {cand.thirdPlaceCount}
+                          3rd: {cand.thirdPlaceCount}
                         </span>
                       </div>
 
@@ -669,15 +817,15 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
           </div>
         </div>
       ) : (
-        /* Admin Voter Audit Roster */
+        /* Admin Voter Audit Personnel */
         <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 overflow-hidden shadow-xs space-y-4 p-4 sm:p-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
             <div>
               <h2 className="text-sm sm:text-base font-bold text-slate-900">
-                Official Voter Participation Audit Roster
+                Official Voter Participation Audit Personnel
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Audit list of all 45 employees across departments with single-ballot reset controls.
+                Audit list of all 46 personnel across departments with individual ballot reset controls.
               </p>
             </div>
 
@@ -698,7 +846,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                   ledgerFilter === 'voted' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'
                 }`}
               >
-                Voted ({totalVotes})
+                Voted ({getDistinctVotersCount(votes)})
               </button>
               <button
                 type="button"
@@ -707,28 +855,42 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                   ledgerFilter === 'pending' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600'
                 }`}
               >
-                Pending ({ALL_PARTICIPANTS.length - totalVotes})
+                Pending ({ALL_PARTICIPANTS.length - getDistinctVotersCount(votes)})
               </button>
             </div>
           </div>
 
           <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto pr-1">
             {ALL_PARTICIPANTS.filter((p) => {
+              const isChiefMember = isDivisionChief(p);
+              if (isChiefMember) {
+                const chiefOffices = getDivisionChiefVotedOffices(votes);
+                if (ledgerFilter === 'voted') return chiefOffices.length > 0;
+                if (ledgerFilter === 'pending') return chiefOffices.length < OFFICES.length;
+                return true;
+              }
               const hasVoted = hasEmployeeVoted(p.id) || hasEmployeeVoted(p.name);
               if (ledgerFilter === 'voted') return hasVoted;
               if (ledgerFilter === 'pending') return !hasVoted;
               return true;
             }).map((p) => {
-              const hasVoted = hasEmployeeVoted(p.id) || hasEmployeeVoted(p.name);
+              const isChiefMember = isDivisionChief(p);
+              const chiefOffices = isChiefMember ? getDivisionChiefVotedOffices(votes) : [];
+              const hasVoted = isChiefMember
+                ? chiefOffices.length > 0
+                : hasEmployeeVoted(p.id) || hasEmployeeVoted(p.name);
 
               return (
                 <div
                   key={p.id}
-                  className="py-3 flex items-center justify-between gap-3 text-xs"
+                  className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 text-xs"
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-900 truncate">{p.name}</span>
+                      <span className="font-bold text-slate-900 truncate flex items-center gap-1.5">
+                        {isChiefMember && <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
+                        <span>{p.name}</span>
+                      </span>
                       <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded">
                         {p.officeId}
                       </span>
@@ -736,8 +898,49 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                     <p className="text-[11px] text-slate-500 truncate mt-0.5">{p.designation}</p>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    {hasVoted ? (
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                    {isChiefMember ? (
+                      <div className="flex flex-wrap items-center gap-1.5 justify-end">
+                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                          {chiefOffices.length} of {OFFICES.length} Offices
+                        </span>
+                        {OFFICES.map((o) => {
+                          const votedThisOffice = chiefOffices.includes(o.id);
+                          return (
+                            <div key={o.id} className="flex items-center">
+                              {votedThisOffice ? (
+                                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
+                                  <span className="flex items-center gap-0.5">
+                                    {o.shortName}: <Check className="w-2.5 h-2.5 text-emerald-700 inline" />
+                                  </span>
+                                  <button
+                                    type="button"
+                                    title={`Reset Division Chief ballot for ${o.shortName}`}
+                                    onClick={() => onResetSingleVote(p.id, p.name, o.id)}
+                                    className="text-rose-600 hover:text-rose-800 font-bold cursor-pointer p-0.5"
+                                  >
+                                    <X className="w-2.5 h-2.5" />
+                                  </button>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-dashed border-slate-200">
+                                  {o.shortName}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {chiefOffices.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => onResetSingleVote(p.id, p.name)}
+                            className="text-[10px] text-rose-600 hover:text-rose-800 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 font-bold cursor-pointer"
+                          >
+                            Reset All
+                          </button>
+                        )}
+                      </div>
+                    ) : hasVoted ? (
                       <>
                         <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
                           <CheckCircle2 className="w-3 h-3" /> Voted
@@ -761,7 +964,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
             })}
           </div>
         </div>
-      )}
+      ))}
     </div>
   );
 };

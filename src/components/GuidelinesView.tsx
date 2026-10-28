@@ -67,7 +67,7 @@ export const GuidelinesView: React.FC<GuidelinesViewProps> = ({ onStartVoting })
           </button>
         </div>
 
-        {/* 📋 The Clean 1 Table Structure */}
+        {/* The Clean 1 Table Structure */}
         <div className="border border-slate-300 rounded-2xl overflow-hidden shadow-2xs">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -102,6 +102,36 @@ export const GuidelinesView: React.FC<GuidelinesViewProps> = ({ onStartVoting })
               </tr>
             </tfoot>
           </table>
+        </div>
+
+        {/* Special Category: Popularity Award */}
+        <div className="bg-gradient-to-r from-amber-50 to-rose-50 border border-amber-200/80 rounded-2xl p-4 sm:p-5 space-y-2.5">
+          <div className="flex items-center gap-2">
+            <Award className="w-5 h-5 text-amber-600 shrink-0" />
+            <h3 className="text-sm sm:text-base font-bold text-slate-900">
+              New Category: Popularity Award (People's Choice)
+            </h3>
+            <span className="text-[10px] font-bold uppercase bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full">
+              Peer Recognition
+            </span>
+          </div>
+          <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">
+            In addition to the Best Employee Award, personnel can vote for their choice of <strong>Most Popular Colleague</strong> across the division. Celebrate peers who bring positive energy, unwavering helpfulness, camaraderie, and team spirit to the DCFSSS family!
+          </p>
+          <div className="flex flex-wrap gap-2 pt-1 text-[11px] text-slate-600 font-medium">
+            <span className="bg-white/80 px-2.5 py-1 rounded-lg border border-amber-200/60 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              Open to all division personnel
+            </span>
+            <span className="bg-white/80 px-2.5 py-1 rounded-lg border border-amber-200/60 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              Independent voting from Best Employee Award
+            </span>
+            <span className="bg-white/80 px-2.5 py-1 rounded-lg border border-amber-200/60 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              Includes optional colleague commendations
+            </span>
+          </div>
         </div>
 
         {/* Bottom Proceed Action Button */}

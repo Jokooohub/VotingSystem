@@ -78,10 +78,40 @@ export interface OfficeTally {
   candidates: CandidateTally[];
 }
 
+export type AwardCategory = 'best-employee' | 'popularity';
+
+export interface PopularityVoteRecord {
+  id: string;
+  voterId?: number;
+  voterName: string;
+  voterOfficeId?: OfficeId | 'DCFSSS';
+  nomineeId: number;
+  nomineeName: string;
+  nomineeOfficeId: OfficeId | 'DCFSSS';
+  nomineeDesignation?: string;
+  message?: string;
+  timestamp: string;
+  verificationCode?: string;
+}
+
+export interface PopularityNomineeTally {
+  employeeId: number;
+  name: string;
+  designation: string;
+  officeId: OfficeId | 'DCFSSS';
+  voteCount: number;
+  percentage: number;
+  messages: {
+    voterName: string;
+    message: string;
+    timestamp: string;
+  }[];
+}
+
 export interface ElectionSettings {
   isResultsPublic: boolean;
   adminName: string;
 }
 
-export type AppStep = 'guidelines' | 'select-office' | 'criteria-voting' | 'success';
+export type AppStep = 'guidelines' | 'select-office' | 'criteria-voting' | 'popularity-voting' | 'success';
 export type ViewTab = 'vote' | 'results' | 'guidelines' | 'admin';

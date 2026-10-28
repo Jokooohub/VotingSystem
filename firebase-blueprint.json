@@ -33,6 +33,24 @@
       },
       "required": ["officeId", "voterName", "timestamp"]
     },
+    "PopularityVoteRecord": {
+      "title": "PopularityVoteRecord",
+      "description": "Ballot for the Popularity Award / People's Choice Award",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "voterId": { "type": "number" },
+        "voterName": { "type": "string" },
+        "voterOfficeId": { "type": "string" },
+        "nomineeId": { "type": "number" },
+        "nomineeName": { "type": "string" },
+        "nomineeOfficeId": { "type": "string" },
+        "nomineeDesignation": { "type": "string" },
+        "message": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["voterName", "nomineeId", "nomineeName", "timestamp"]
+    },
     "ElectionSettings": {
       "title": "ElectionSettings",
       "description": "Global election configuration for DCFSSS",
@@ -48,6 +66,10 @@
     "/votes/{voteId}": {
       "schema": "VoteRecord",
       "description": "Collection of all submitted votes across all offices"
+    },
+    "/popularity_votes/{voteId}": {
+      "schema": "PopularityVoteRecord",
+      "description": "Collection of all submitted votes for the Popularity Award"
     },
     "/settings/{settingsId}": {
       "schema": "ElectionSettings",

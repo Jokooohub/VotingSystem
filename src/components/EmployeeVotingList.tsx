@@ -55,7 +55,7 @@ export const EmployeeVotingList: React.FC<EmployeeVotingListProps> = ({
 
   return (
     <div className="space-y-4 sm:space-y-5 max-w-5xl mx-auto pb-24 sm:pb-0">
-      {/* ⚠️ Warning Banner if user skipped identifying themselves in Step 1 */}
+      {/* Warning Banner if user skipped identifying themselves in Step 1 */}
       {!isVoterIdentified && (
         <motion.div
           initial={{ opacity: 0, y: -6 }}
@@ -69,7 +69,7 @@ export const EmployeeVotingList: React.FC<EmployeeVotingListProps> = ({
                 Voter Identification Required
               </p>
               <p className="text-[11px] text-amber-700 mt-0.5">
-                You must choose your name from the employee roster in Step 1 before your ballot can be submitted.
+                You must choose your name from the employee Personnel in Step 1 before your ballot can be submitted.
               </p>
             </div>
           </div>

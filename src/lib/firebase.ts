@@ -13,10 +13,10 @@ export const auth = getAuth(app);
 async function testFirestoreConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
-    console.log('✅ Firebase Cloud Firestore connected successfully.');
+    console.log('[Firebase] Cloud Firestore connected successfully.');
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
-    console.info('ℹ️ Firebase Firestore initializing / offline mode active:', msg);
+    console.info('[Firebase] Firestore initializing / offline mode active:', msg);
   }
 }
 

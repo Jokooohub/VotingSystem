@@ -17,6 +17,16 @@ service cloud.firestore {
       request.resource.data.adminName is string;
     }
 
+    function isValidPopularityVote() {
+      return request.resource.data.keys().hasAll([
+        'voterName', 'nomineeId', 'nomineeName', 'timestamp'
+      ]) &&
+      request.resource.data.voterName is string &&
+      request.resource.data.nomineeName is string &&
+      request.resource.data.voterName.size() <= 200 &&
+      request.resource.data.nomineeName.size() <= 200;
+    }
+
     // Connection test collection
     match /test/{docId} {
       allow read, write: if true;
@@ -26,6 +36,13 @@ service cloud.firestore {
     match /votes/{voteId} {
       allow read: if true;
       allow create: if isValidVote();
+      allow update, delete: if true;
+    }
+
+    // Popularity votes collection: Public read for real-time live popularity tallying
+    match /popularity_votes/{voteId} {
+      allow read: if true;
+      allow create: if isValidPopularityVote();
       allow update, delete: if true;
     }
 

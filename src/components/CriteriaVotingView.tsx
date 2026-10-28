@@ -348,7 +348,7 @@ export const CriteriaVotingView: React.FC<CriteriaVotingViewProps> = ({
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="w-6 h-6 rounded-lg bg-amber-400 text-amber-950 flex items-center justify-center text-xs font-black shrink-0 shadow-2xs">
-                    🥇 1
+                    1
                   </span>
                   <div className="min-w-0">
                     <span className="text-[10px] uppercase font-bold text-amber-800/80 block">
@@ -380,7 +380,7 @@ export const CriteriaVotingView: React.FC<CriteriaVotingViewProps> = ({
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="w-6 h-6 rounded-lg bg-slate-300 text-slate-800 flex items-center justify-center text-xs font-black shrink-0 shadow-2xs">
-                    🥈 2
+                    2
                   </span>
                   <div className="min-w-0">
                     <span className="text-[10px] uppercase font-bold text-slate-600 block">
@@ -412,7 +412,7 @@ export const CriteriaVotingView: React.FC<CriteriaVotingViewProps> = ({
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="w-6 h-6 rounded-lg bg-amber-600 text-white flex items-center justify-center text-xs font-black shrink-0 shadow-2xs">
-                    🥉 3
+                    3
                   </span>
                   <div className="min-w-0">
                     <span className="text-[10px] uppercase font-bold text-amber-900/80 block">
@@ -439,7 +439,7 @@ export const CriteriaVotingView: React.FC<CriteriaVotingViewProps> = ({
             <div className="space-y-2 pt-2 border-t border-slate-100">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-bold text-slate-800">
-                  Personnel Roster ({filteredEmployees.length})
+                  Personnel Personnel ({filteredEmployees.length})
                 </span>
                 <span className="text-[11px] text-slate-400">
                   Tap card to set or unassign rank
@@ -481,7 +481,7 @@ export const CriteriaVotingView: React.FC<CriteriaVotingViewProps> = ({
                               : 'bg-slate-100 text-slate-600'
                           }`}
                         >
-                          {isRank1 ? '🥇' : isRank2 ? '🥈' : isRank3 ? '🥉' : <User className="w-4 h-4" />}
+                          {isRank1 ? '1' : isRank2 ? '2' : isRank3 ? '3' : <User className="w-4 h-4" />}
                         </div>
                         <div className="min-w-0 flex-1">
                           <h4 className="text-xs font-bold text-slate-900 truncate">
@@ -611,19 +611,19 @@ export const CriteriaVotingView: React.FC<CriteriaVotingViewProps> = ({
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
                     <div className="bg-white p-2.5 rounded-xl border border-amber-200 text-amber-950 flex items-center gap-2">
-                      <span className="font-black text-amber-600">🥇 1st:</span>
+                      <span className="font-black text-amber-700">1st:</span>
                       <span className="font-bold truncate">
                         {sel?.rank1Name || <span className="text-slate-400 italic">None</span>}
                       </span>
                     </div>
                     <div className="bg-white p-2.5 rounded-xl border border-slate-200 text-slate-800 flex items-center gap-2">
-                      <span className="font-black text-slate-600">🥈 2nd:</span>
+                      <span className="font-black text-slate-700">2nd:</span>
                       <span className="font-bold truncate">
                         {sel?.rank2Name || <span className="text-slate-400 italic">None</span>}
                       </span>
                     </div>
                     <div className="bg-white p-2.5 rounded-xl border border-amber-200/60 text-amber-950 flex items-center gap-2">
-                      <span className="font-black text-amber-800">🥉 3rd:</span>
+                      <span className="font-black text-amber-800">3rd:</span>
                       <span className="font-bold truncate">
                         {sel?.rank3Name || <span className="text-slate-400 italic">None</span>}
                       </span>
