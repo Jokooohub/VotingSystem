@@ -76,7 +76,7 @@ export const OFFICES: Office[] = [
   },
 ];
 
-// All division participants eligible to vote (46 members)
+// All division participants eligible to vote (49 members)
 export const ALL_PARTICIPANTS: Participant[] = [
   {
     id: 1,
@@ -249,6 +249,24 @@ export const ALL_PARTICIPANTS: Participant[] = [
     designation: 'Office Staff',
     officeId: 'ECO',
   },
+  {
+    id: 47,
+    name: 'Richielyn May G. Soso',
+    designation: 'GIS Specialist',
+    officeId: 'ECO',
+  },
+  {
+    id: 48,
+    name: 'Louie Jay B. Sta. Iglesia',
+    designation: 'Project Technical Assistant',
+    officeId: 'ECO',
+  },
+  {
+    id: 49,
+    name: 'Noribert G. Yong',
+    designation: 'Project Technical Assistant',
+    officeId: 'ECO',
+  },
   // GSO
   {
     id: 29,
@@ -408,13 +426,16 @@ export const ANONYMOUS_CODENAMES: Record<number, { name: string; avatar: string 
   44: { name: 'Olive Swift', avatar: '' },
   45: { name: 'Hazelnut Robin', avatar: '' },
   46: { name: 'Elderberry Falcon', avatar: '' },
+  47: { name: 'Chestnut Kestrel', avatar: '' },
+  48: { name: 'Juniper Fox', avatar: '' },
+  49: { name: 'Saffron Badger', avatar: '' },
 };
 
 export function getAnonymousProfile(id: number): { name: string; avatar: string } {
   return ANONYMOUS_CODENAMES[id] || { name: `Nominee #${id}`, avatar: '' };
 }
 
-// 45 Nominees grouped by Office (ECO, GSO, OCSS, DRRMO)
+// Nominees grouped by Office (ECO, GSO, OCSS, DRRMO)
 export const EMPLOYEES: Employee[] = ALL_PARTICIPANTS.filter(
   (p): p is Employee => p.officeId !== 'DCFSSS'
 );

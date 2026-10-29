@@ -438,7 +438,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                     : 'text-slate-400 hover:text-white bg-slate-800'
                 }`}
               >
-                Voter Audit Personnel ({activeAwardTab === 'popularity' ? `${popTotalVotes}/${totalEmployees}` : `${totalVotes}/${totalEmployees}`})
+                Voter Audit Roster ({activeAwardTab === 'popularity' ? `${popTotalVotes}/${totalEmployees}` : `${totalVotes}/${totalEmployees}`})
               </button>
             </div>
 
@@ -731,7 +731,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
           <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 overflow-hidden shadow-xs">
             <div className="p-3.5 sm:p-4 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
               <span className="text-xs font-bold text-slate-800">
-                Official Personnel Leaderboard ({filteredRankings.length} Nominees)
+                Official Roster Leaderboard ({filteredRankings.length} Nominees)
               </span>
               <span className="text-[11px] text-slate-400">
                 Points: 1st: 3pts, 2nd: 2pts, 3rd: 1pt
@@ -817,15 +817,15 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
           </div>
         </div>
       ) : (
-        /* Admin Voter Audit Personnel */
+        /* Admin Voter Audit Roster */
         <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 overflow-hidden shadow-xs space-y-4 p-4 sm:p-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
             <div>
               <h2 className="text-sm sm:text-base font-bold text-slate-900">
-                Official Voter Participation Audit Personnel
+                Official Voter Participation Audit Roster
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Audit list of all 46 personnel across departments with individual ballot reset controls.
+                Audit list of all {ALL_PARTICIPANTS.length} personnel across departments with individual ballot reset controls.
               </p>
             </div>
 
